@@ -617,6 +617,10 @@ function save(){
    ============================================================ */
 const SYNC_KEYS=['shop','menu','ingredients','orders','expenses','incomes','savedNames','menuCats','ingCats','expenseCats','incomeCats'];
 
+/* ★ config Cloud ທີ່ຝັງໄວ້ໃນໄຟລ໌ (ຖ້າຕ້ອງການ hardcode) — ປົກກະຕິ null, ໃຊ້ share-link ແທນ */
+const EMBEDDED_FB_CONFIG=null;
+const EMBEDDED_STORE_ID='main-store';
+
 const SYNC={
   deviceId:null,
   channel:null,
@@ -641,9 +645,41 @@ const SYNC={
     window.addEventListener('storage',(e)=>{
       if(e.key==='pos_syncPing'){ this._reloadLocalIntoState(); if(currentPage&&!$('app').classList.contains('hidden')) refreshSoft(); }
     });
-    // ພະຍາຍາມຕໍ່ cloud ຖ້າມີ config
+    // ★ ຫາ config ຕາມລຳດັບ: (1) ລິ້ງທີ່ແຊຣ໌ມາ (URL) → (2) ທີ່ເຄີຍເກັບໄວ້ → (3) ຝັງໃນໄຟລ໌
+    const fromLink=this._readConfigFromHash();
+    if(fromLink && fromLink.config){
+      DB.set('fbConfig',fromLink.config);
+      if(fromLink.storeId) DB.set('storeId',fromLink.storeId);
+    } else if(!DB.get('fbConfig',null) && EMBEDDED_FB_CONFIG){
+      DB.set('fbConfig',EMBEDDED_FB_CONFIG);
+      DB.set('storeId',EMBEDDED_STORE_ID);
+    }
+    // ຕໍ່ cloud ອັດຕະໂນມັດ ຖ້າມີ config (ບໍ່ຕ້ອງກົດຫຍັງ)
     const cfg=DB.get('fbConfig',null);
-    if(cfg) this.connectCloud(cfg);
+    if(cfg){
+      // ຮັກສາ hash ໄວ້ໃນ address bar ໃຫ້ລິ້ງນີ້ແຊຣ໌ຕໍ່ໄດ້
+      this.connectCloud(cfg);
+    }
+  },
+  _readConfigFromHash(){
+    try{
+      const h=(location.hash||'')+'&'+(location.search||'').replace('?','&');
+      const m=h.match(/[#&]s=([^&]+)/);
+      if(!m) return null;
+      let b=m[1].replace(/-/g,'+').replace(/_/g,'/');
+      while(b.length%4) b+='=';
+      const json=decodeURIComponent(escape(atob(b)));
+      const obj=JSON.parse(json);
+      if(obj && obj.config && obj.config.apiKey && obj.config.projectId) return obj;
+    }catch(e){}
+    return null;
+  },
+  shareLink(){
+    const cfg=DB.get('fbConfig',null); if(!cfg) return '';
+    const storeId=DB.get('storeId','')||EMBEDDED_STORE_ID;
+    let b=btoa(unescape(encodeURIComponent(JSON.stringify({config:cfg,storeId}))));
+    b=b.replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    return location.origin+location.pathname+'#s='+b;
   },
 
   markDirty(){
@@ -697,14 +733,26 @@ const SYNC={
         window._fbmods={appMod,fsMod};
       }
       const {initializeApp}=window._fbmods.appMod;
-      const {getFirestore,doc,setDoc,onSnapshot}=window._fbmods.fsMod;
+      const {getFirestore,doc,setDoc,getDoc,onSnapshot}=window._fbmods.fsMod;
       const app=initializeApp(cfg, 'pos_'+Date.now());
       const db=getFirestore(app);
       this.fb={app,db,doc,setDoc,onSnapshot};
-      // ໃຊ້ 1 ເອກະສານຕໍ່ 1 ຮ້ານ (ອີງໃສ່ storeId ຈາກ config ຫຼື ຄ່າຄົງທີ່)
-      const storeId=DB.get('storeId',null)||(()=>{const s='store_'+(cfg.projectId||'main');DB.set('storeId',s);return s;})();
+      // ໃຊ້ 1 ເອກະສານຕໍ່ 1 ຮ້ານ (storeId ດຽວກັນ = ຊິ້ງຮ່ວມກັນ)
+      const storeId=DB.get('storeId',null)||EMBEDDED_STORE_ID;
+      DB.set('storeId',storeId);
       this.docRef=doc(db,'pos_stores',storeId);
-      // ຟັງການປ່ຽນແປງ (ຣຽວທາມ)
+      // ★ ດຶງກ່ອນ (pull-first): ຖ້າ cloud ມີຂໍ້ມູນແລ້ວ → ເອົາລົງ (ບໍ່ທັບຂອງ cloud ດ້ວຍຂໍ້ມູນ default)
+      try{
+        const snap0=await getDoc(this.docRef);
+        if(snap0.exists() && snap0.data() && snap0.data().bundle){
+          let b; try{ b=JSON.parse(snap0.data().bundle); }catch(_){}
+          if(b && !(b._meta && b._meta.from===this.deviceId)) this._applyBundle(b,'cloud');
+        }else{
+          // cloud ຫວ່າງ → ອັບຂໍ້ມູນເຄື່ອງນີ້ຂຶ້ນ ເປັນຈຸດເລີ່ມ
+          await this.pushCloud();
+        }
+      }catch(e){ /* getDoc ອາດຖືກ block ຊົ່ວຄາວ; onSnapshot ຈະຈັດການ */ }
+      // ຟັງການປ່ຽນແປງ (ຣຽວທາມ) — ອັບເດດເອງທຸກເຄື່ອງ
       this.unsub=onSnapshot(this.docRef,(snap)=>{
         if(!snap.exists()) return;
         const data=snap.data();
@@ -712,11 +760,9 @@ const SYNC={
         let bundle; try{ bundle=JSON.parse(data.bundle); }catch(e){ return; }
         if(bundle._meta && bundle._meta.from===this.deviceId) return; // ຂອງເຮົາເອງ ຂ້າມ
         this._applyBundle(bundle,'cloud');
-        toast('🔄 ອັບເດດຈາກອຸປະກອນອື່ນແລ້ວ');
+        toast('🔄 ອັບເດດຈາກອຸປະກອນອື່ນ');
       },(err)=>{ this.status='error'; this.lastError=err.message||'onSnapshot error'; updateSyncBadge(); });
       this.status='online'; this.lastError=''; updateSyncBadge();
-      // push ຄັ້ງທຳອິດ ໃຫ້ cloud ມີຂໍ້ມູນຫຼ້າສຸດ
-      this.pushCloud();
       return true;
     }catch(e){
       this.status='error'; this.lastError=(e&&e.message)||String(e); updateSyncBadge();
@@ -2178,18 +2224,19 @@ function renderSyncPanel(){
 
     <div class="card">
       <div class="card-title"><span class="dot"></span>☁️ ຊິ້ງ Cloud ຫຼາຍເຄື່ອງ (Firebase)</div>
-      <div class="tiny-note" style="text-align:left;margin-top:0;margin-bottom:12px">ໃສ່ຄ່າ config ຈາກ Firebase ຂອງທ່ານ → ທຸກເຄື່ອງທີ່ໃສ່ config ດຽວກັນ ຈະເຫັນຂໍ້ມູນຣຽວທາມ ພ້ອມກັນ ບໍ່ຕ້ອງສົ່ງໄຟລ໌.</div>
+      <div class="tiny-note" style="text-align:left;margin-top:0;margin-bottom:12px">ຕັ້ງຄ່າ <b>ຄັ້ງດຽວ</b> → ໄດ້ <b>ລິ້ງແຊຣ໌</b> ທີ່ມີຂໍ້ມູນຕິດໄປນຳ. ສົ່ງລິ້ງໃຫ້ໝູ່ → ເປີດແລ້ວເຫັນຂໍ້ມູນດຽວກັນ ຊິ້ງອັດຕະໂນມັດ ບໍ່ຕ້ອງກົດຫຍັງ ບໍ່ຕ້ອງຕັ້ງຄ່າຊ້ຳ.</div>
       ${hasCfg?`
         <div style="background:#F2FBFA;border:1.5px solid var(--pastel-mint);border-radius:12px;padding:12px;margin-bottom:12px">
-          <div style="font-size:13px;font-weight:700;color:var(--teal-deep)">✓ ຕັ້ງຄ່າ Cloud ແລ້ວ</div>
-          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:3px">ລະຫັດຮ້ານ (storeId): <b>${esc(storeId)}</b><br>ໃສ່ storeId ດຽວກັນນີ້ໃນເຄື່ອງອື່ນເພື່ອຊິ້ງ</div>
+          <div style="font-size:13px;font-weight:700;color:var(--teal-deep)">✓ ຊິ້ງ Cloud ເປີດຢູ່ · ອັບເດດອັດຕະໂນມັດ</div>
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:3px">ພິມ ຫຼື ແກ້ຫຍັງ ທຸກເຄື່ອງເຫັນທັນທີ ບໍ່ຕ້ອງກົດຫຍັງ · ລະຫັດຮ້ານ: <b>${esc(storeId)}</b></div>
         </div>
-        <div style="display:flex;gap:10px">
-          <button class="btn-ghost" style="margin-top:0;flex:1" onclick="SYNC.pushCloud();toast('ສົ່ງຂຶ້ນ Cloud ແລ້ວ')">⬆️ ດັນຂຶ້ນດຽວນີ້</button>
-          <button class="btn-ghost" style="margin-top:0;flex:1;color:var(--danger-deep)" onclick="disconnectCloudUI()">ຕັດການເຊື່ອມຕໍ່</button>
+        <button class="btn-save" style="margin-top:0;background:linear-gradient(135deg,#8A7BC8,#6C5CB0)" onclick="showShareLink()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" y1="2" x2="12" y2="15"/></svg>ກ໋ອບປີ້ລິ້ງແຊຣ໌ (ສົ່ງໃຫ້ໝູ່)</button>
+        <div style="display:flex;gap:10px;margin-top:10px">
+          <button class="btn-ghost" style="margin-top:0;flex:1;font-size:12px" onclick="SYNC.pushCloud();toast('ຊິ້ງແລ້ວ ✓')">🔄 ບັງຄັບຊິ້ງ</button>
+          <button class="btn-ghost" style="margin-top:0;flex:1;font-size:12px;color:var(--danger-deep)" onclick="disconnectCloudUI()">ຕັດ Cloud</button>
         </div>
       `:`
-        <button class="btn-save" style="margin-top:0;background:linear-gradient(135deg,#8A7BC8,#6C5CB0)" onclick="openCloudSetup()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>ຕັ້ງຄ່າ Cloud ຊິ້ງ</button>
+        <button class="btn-save" style="margin-top:0;background:linear-gradient(135deg,#8A7BC8,#6C5CB0)" onclick="openCloudSetup()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>ຕັ້ງຄ່າ Cloud ຊິ້ງ (ຄັ້ງດຽວ)</button>
       `}
       <div class="tiny-note" style="margin-top:10px"><a onclick="showFirebaseGuide()" style="color:var(--teal-deep);font-weight:700;cursor:pointer">📖 ວິທີເອົາ config ຈາກ Firebase (ຟຣີ)</a></div>
     </div>
@@ -2252,13 +2299,45 @@ async function saveCloudConfig(){
   }catch(e){ toast('config ບໍ່ຖືກຮູບແບບ ລອງໃໝ່',true); return; }
   if(!cfg||!cfg.projectId||!cfg.apiKey){ toast('config ຂາດ projectId ຫຼື apiKey',true); return; }
   const sid=$('fbStoreId').value.trim();
-  if(sid) DB.set('storeId',sid);
+  if(sid) DB.set('storeId',sid); else if(!DB.get('storeId',null)) DB.set('storeId',EMBEDDED_STORE_ID);
   DB.set('fbConfig',cfg);
   closeModal();
   toast('ກຳລັງເຊື່ອມຕໍ່ Cloud...');
   const okc=await SYNC.connectCloud(cfg);
+  // ★ ໃສ່ config ລົງ URL (hash) ໃຫ້ລິ້ງນີ້ກາຍເປັນລິ້ງແຊຣ໌ໄດ້ທັນທີ
+  try{ const link=SYNC.shareLink(); if(link&&history&&history.replaceState) history.replaceState(null,'','#s='+link.split('#s=')[1]); }catch(e){}
   refresh();
-  toast(okc?'ເຊື່ອມຕໍ່ Cloud ສຳເລັດ ✓':'ຕໍ່ Cloud ບໍ່ໄດ້: '+SYNC.lastError, !okc);
+  if(okc){ toast('ເຊື່ອມຕໍ່ Cloud ສຳເລັດ ✓'); setTimeout(()=>showShareLink(),400); }
+  else toast('ຕໍ່ Cloud ບໍ່ໄດ້: '+SYNC.lastError, true);
+}
+function showShareLink(){
+  const link=SYNC.shareLink();
+  if(!link){ toast('ຕັ້ງຄ່າ Cloud ກ່ອນ',true); return; }
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>🔗 ລິ້ງແຊຣ໌ (ຂໍ້ມູນຕິດໄປນຳ)</h3>
+    <p class="msub">ກ໋ອບລິ້ງນີ້ສົ່ງໃຫ້ໝູ່ ຫຼື ເປີດໃນເຄື່ອງອື່ນ → ເຫັນຂໍ້ມູນດຽວກັນ ຊິ້ງອັດຕະໂນມັດ ບໍ່ຕ້ອງຕັ້ງຄ່າຫຍັງ</p>
+    <div class="fg full" style="margin-bottom:12px"><textarea id="shareLinkBox" readonly style="min-height:90px;font-size:12px;word-break:break-all" onclick="this.select()">${esc(link)}</textarea></div>
+    <button class="btn-save" onclick="copyShareLink()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>ກ໋ອບປີ້ລິ້ງ</button>
+    <div class="tiny-note" style="text-align:left">⚠️ ລິ້ງນີ້ມີກຸນແຈເຂົ້າ Cloud ຂອງທ່ານ — ສົ່ງໃຫ້ສະເພາະຄົນທີ່ໄວ້ໃຈ (ຄົນຮ້ານ)</div>
+    <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function copyShareLink(){
+  const link=SYNC.shareLink();
+  if(!link){ toast('ຕັ້ງຄ່າ Cloud ກ່ອນ',true); return; }
+  const done=()=>toast('ກ໋ອບປີ້ລິ້ງແລ້ວ ✓ ສົ່ງໃຫ້ໝູ່ໄດ້ເລີຍ');
+  try{
+    if(navigator.clipboard && navigator.clipboard.writeText){ navigator.clipboard.writeText(link).then(done).catch(()=>fallbackCopy(link,done)); }
+    else fallbackCopy(link,done);
+  }catch(e){ fallbackCopy(link,done); }
+}
+function fallbackCopy(text,cb){
+  const box=$('shareLinkBox');
+  if(box){ box.select(); try{ document.execCommand('copy'); cb&&cb(); return; }catch(e){} }
+  // ຖ້າຍັງບໍ່ໄດ້ ໃຫ້ສະແດງ modal ໃຫ້ກ໋ອບເອງ
+  if(!box) showShareLink();
+  else toast('ກົດຄ້າງທີ່ຊ່ອງລິ້ງ ແລ້ວເລືອກ Copy',true);
 }
 function disconnectCloudUI(){
   SYNC.disconnectCloud();
