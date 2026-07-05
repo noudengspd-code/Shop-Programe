@@ -1,0 +1,2547 @@
+<!DOCTYPE html>
+<html lang="lo">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>ລະບົບຂາຍ POS</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;500;600;700;800&family=Sora:wght@400;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#E8F4F4; --surface:#FFFFFF; --ink:#0B2E33; --ink-soft:#4A6B70;
+  --pastel-mint:#B8E6DC; --pastel-sky:#BEE3F2; --pastel-lav:#D9D4F0;
+  --pastel-peach:#FBDDC7; --pastel-pink:#F7D0DE; --pastel-yellow:#FCEFC7;
+  --teal:#2FA8A0; --teal-deep:#1E7A74; --teal-ink:#0E5551;
+  --danger:#E57373; --danger-deep:#C1554F; --warn:#E0A64C;
+  --income:#2FA8A0; --expense:#D98A5B;
+  --line:#D2E7E7;
+  --shadow:0 6px 20px rgba(14,85,81,.10);
+  --shadow-lg:0 12px 34px rgba(14,85,81,.16);
+  --shadow-3d:0 10px 22px rgba(14,85,81,.14), 0 2px 4px rgba(14,85,81,.10);
+  --r:18px; --r-sm:12px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%}
+body{font-family:'Noto Sans Lao','Sora',sans-serif;background:var(--bg);color:var(--ink);overflow:hidden;position:fixed;width:100%;overscroll-behavior:none}
+button{font-family:inherit;cursor:pointer;border:none;background:none;color:inherit}
+input,select,textarea{font-family:inherit;font-size:16px}
+.hidden{display:none!important}
+
+/* LOGIN */
+#loginScreen{position:fixed;inset:0;z-index:100;background:linear-gradient(160deg,#BEE3F2,#D9D4F0 48%,#B8E6DC);display:flex;align-items:center;justify-content:center;padding:24px}
+.login-card{background:var(--surface);border-radius:26px;padding:38px 28px 32px;width:100%;max-width:360px;box-shadow:var(--shadow-lg);animation:pop .5s cubic-bezier(.2,.9,.3,1.2)}
+@keyframes pop{from{opacity:0;transform:translateY(24px) scale(.96)}to{opacity:1;transform:none}}
+.brand-badge{width:80px;height:80px;border-radius:24px;margin:0 auto 18px;background:linear-gradient(150deg,var(--teal),var(--teal-deep));display:flex;align-items:center;justify-content:center;box-shadow:0 10px 24px rgba(47,168,160,.4)}
+.brand-badge svg{width:44px;height:44px}
+.login-card h1{font-size:23px;text-align:center;font-weight:800}
+.login-card .sub{text-align:center;color:var(--ink-soft);font-size:14px;margin:6px 0 26px}
+.field{margin-bottom:16px}
+.field label{display:block;font-size:13px;color:var(--ink-soft);font-weight:600;margin-bottom:7px;padding-left:4px}
+.field input{width:100%;padding:15px 16px;border-radius:14px;border:2px solid var(--line);background:#F4FAFA;color:var(--ink);font-weight:600;transition:border-color .15s,background .15s}
+.field input:focus{outline:none;border-color:var(--teal);background:#fff}
+.btn-primary{width:100%;padding:16px;border-radius:14px;background:linear-gradient(135deg,var(--teal),var(--teal-deep));color:#fff;font-weight:700;font-size:16px;margin-top:8px;box-shadow:0 8px 20px rgba(47,168,160,.35);transition:transform .12s}
+.btn-primary:active{transform:scale(.98)}
+.login-err{color:var(--danger-deep);font-size:13px;text-align:center;margin-top:14px;font-weight:600;min-height:18px}
+.login-hint{text-align:center;font-size:12px;color:var(--ink-soft);margin-top:18px;line-height:1.6}
+
+/* SHELL */
+#app{height:100%;display:flex;flex-direction:column}
+.topbar{background:var(--surface);padding:14px 18px;display:flex;align-items:center;justify-content:space-between;box-shadow:0 2px 12px rgba(14,85,81,.06);z-index:20;padding-top:max(14px,env(safe-area-inset-top))}
+.topbar .tt{display:flex;align-items:center;gap:11px;min-width:0}
+.topbar .logo-sm{width:38px;height:38px;border-radius:12px;flex-shrink:0;overflow:hidden;background:linear-gradient(150deg,var(--teal),var(--teal-deep));display:flex;align-items:center;justify-content:center}
+.topbar .logo-sm svg{width:22px;height:22px}
+.topbar .logo-sm img{width:100%;height:100%;object-fit:cover}
+.topbar .txt-wrap{min-width:0}
+.topbar .ttl{font-size:16px;font-weight:800;line-height:1.15;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar .ttl small{display:block;font-size:11px;color:var(--ink-soft);font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icon-btn{width:40px;height:40px;border-radius:12px;background:#F0F8F8;flex-shrink:0;display:flex;align-items:center;justify-content:center;transition:transform .12s,background .12s}
+.icon-btn:active{transform:scale(.92);background:var(--pastel-mint)}
+.icon-btn svg{width:20px;height:20px}
+
+.main{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;overscroll-behavior:contain;padding:16px 16px 96px}
+.page{animation:fade .3s ease}
+@keyframes fade{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
+
+/* NAV */
+.navbar{position:fixed;bottom:0;left:0;right:0;z-index:30;background:var(--surface);box-shadow:0 -4px 20px rgba(14,85,81,.10);display:flex;justify-content:space-around;padding:8px 4px max(8px,env(safe-area-inset-bottom));border-top-left-radius:22px;border-top-right-radius:22px}
+.nav-item{flex:1;display:flex;flex-direction:column;align-items:center;gap:3px;padding:6px 1px;border-radius:14px;color:var(--ink-soft);transition:color .2s;position:relative}
+.nav-item svg{width:22px;height:22px;transition:transform .2s}
+.nav-item span{font-size:10px;font-weight:600}
+.nav-item.active{color:var(--teal-deep)}
+.nav-item.active svg{transform:translateY(-2px) scale(1.1)}
+.nav-item.active::before{content:'';position:absolute;top:0;width:24px;height:3px;border-radius:3px;background:var(--teal)}
+
+/* HEADERS */
+.sec-head{margin:2px 0 14px}
+.sec-head h2{font-size:21px;font-weight:800}
+.sec-head p{font-size:13px;color:var(--ink-soft);margin-top:2px}
+
+.card{background:var(--surface);border-radius:var(--r);padding:16px;box-shadow:var(--shadow);margin-bottom:14px}
+.card-title{font-size:15px;font-weight:700;margin-bottom:12px;display:flex;align-items:center;gap:8px}
+.card-title .dot{width:8px;height:8px;border-radius:50%;background:var(--teal)}
+.card-title .spacer{flex:1}
+.card-title .tlink{font-size:12px;font-weight:600;color:var(--teal-deep)}
+
+.stat-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:14px}
+.stat{border-radius:var(--r);padding:16px 15px;position:relative;overflow:hidden;box-shadow:var(--shadow)}
+.stat .lbl{font-size:12.5px;font-weight:600;opacity:.85}
+.stat .val{font-size:22px;font-weight:800;margin-top:6px;line-height:1.1}
+.stat .val small{font-size:13px;font-weight:600}
+.stat.mint{background:linear-gradient(140deg,#CDEFE6,#A8DECF)}
+.stat.sky{background:linear-gradient(140deg,#CFE9F6,#A9D6EC)}
+.stat.lav{background:linear-gradient(140deg,#E1DBF6,#C7BFEE)}
+.stat.peach{background:linear-gradient(140deg,#FCE4D2,#F8CBAA)}
+.stat.pink{background:linear-gradient(140deg,#FBDDE8,#F4B8CD)}
+.stat.yellow{background:linear-gradient(140deg,#FDF0CE,#F8DE9A)}
+.stat .ico{position:absolute;right:12px;top:12px;opacity:.35}
+.stat .ico svg{width:26px;height:26px}
+
+/* ===== SELL PAGE — vertical photo tiles, 3D, category tabs ===== */
+.pos-wrap{display:flex;flex-direction:column;gap:14px;perspective:1400px}
+.cat-tabs{display:flex;gap:8px;overflow-x:auto;padding-bottom:4px;-webkit-overflow-scrolling:touch}
+.cat-tab{flex-shrink:0;padding:9px 16px;border-radius:20px;background:var(--surface);box-shadow:var(--shadow);font-size:13px;font-weight:700;color:var(--ink-soft);display:flex;align-items:center;gap:6px;transition:background .15s,color .15s;white-space:nowrap}
+.cat-tab.on{background:linear-gradient(135deg,var(--teal),var(--teal-deep));color:#fff}
+.cat-tab .cc{font-size:15px}
+
+.menu-grid{display:grid;grid-template-columns:1fr 1fr;gap:13px}
+.drink-tile{background:linear-gradient(150deg,#FFFFFF,#F5FBFB);border-radius:20px;padding:0;overflow:hidden;box-shadow:var(--shadow-3d);text-align:left;position:relative;border:1px solid rgba(255,255,255,.9);transition:transform .18s cubic-bezier(.2,.8,.3,1),box-shadow .18s;transform-style:preserve-3d;display:flex;flex-direction:column;will-change:transform}
+.drink-tile:active{transform:translateY(2px) scale(.985);box-shadow:0 4px 12px rgba(14,85,81,.14)}
+.drink-tile.picked{border:2px solid var(--teal);box-shadow:0 12px 26px rgba(47,168,160,.30),0 2px 6px rgba(47,168,160,.2)}
+.drink-tile .photo{aspect-ratio:9/11.2;width:100%;position:relative;overflow:hidden;background:linear-gradient(150deg,var(--pastel-sky),var(--pastel-mint));display:flex;align-items:center;justify-content:center}
+.drink-tile .photo img{width:100%;height:100%;object-fit:cover;display:block}
+.drink-tile .photo .ph-emoji{font-size:52px;filter:drop-shadow(0 4px 6px rgba(0,0,0,.12))}
+.drink-tile .photo::after{content:'';position:absolute;inset:0;background:linear-gradient(180deg,rgba(255,255,255,.18),transparent 35%);pointer-events:none}
+.drink-tile .body{padding:11px 13px 13px;display:flex;flex-direction:column;gap:5px}
+.drink-tile .nm{font-size:14.5px;font-weight:700;line-height:1.25}
+.drink-tile .pr{font-size:15px;font-weight:800;color:var(--teal-deep)}
+.drink-tile .qbadge{position:absolute;top:9px;right:9px;min-width:30px;height:30px;padding:0 8px;background:linear-gradient(140deg,var(--teal),var(--teal-deep));color:#fff;border-radius:16px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;box-shadow:0 5px 12px rgba(30,122,116,.5);border:2px solid #fff}
+.drink-tile.empty-slot{border:2px dashed var(--line);background:#F2FAFA;box-shadow:none;align-items:center;justify-content:center;min-height:200px;color:var(--ink-soft);gap:6px}
+.drink-tile .photo .ph-emoji{font-size:48px}
+.drink-tile.empty-slot .es-i{font-size:32px;opacity:.5}
+.drink-tile.empty-slot .es-n{font-size:12.5px;font-weight:600;text-align:center}
+
+.cart-summary{background:var(--surface);border-radius:var(--r);padding:14px 16px;box-shadow:var(--shadow-3d)}
+.cart-line{display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px dashed var(--line)}
+.cart-line:last-of-type{border-bottom:none}
+.cart-line .ci{flex:1;min-width:0}
+.cart-line .cn{font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px}
+.cart-line .cn .cimg{width:26px;height:26px;border-radius:8px;object-fit:cover;flex-shrink:0}
+.cart-line .cn .cem{font-size:19px}
+.cart-line .cd{font-size:12px;color:var(--ink-soft);margin-top:2px}
+.qty-ctrl{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.qbtn{width:32px;height:32px;border-radius:10px;background:#EAF6F6;font-size:20px;font-weight:700;color:var(--teal-deep);display:flex;align-items:center;justify-content:center;line-height:0;transition:transform .1s,background .1s}
+.qbtn:active{transform:scale(.9);background:var(--pastel-mint)}
+.qbtn.minus{background:#FBE4E4;color:var(--danger-deep)}
+.qbtn.minus:active{background:#F5CFCF}
+.qnum{font-size:16px;font-weight:800;min-width:22px;text-align:center}
+.cart-empty{text-align:center;color:var(--ink-soft);padding:22px 10px;font-size:14px}
+.cart-empty .em{font-size:34px;display:block;margin-bottom:8px}
+
+.opt-row{display:flex;gap:8px;margin-top:4px}
+.opt-btn{flex:1;padding:12px 8px;border-radius:12px;background:#F0F8F8;border:2px solid transparent;font-size:13px;font-weight:600;color:var(--ink-soft);text-align:center;transition:background .15s,color .15s,border-color .15s,transform .1s}
+.opt-btn.on{background:linear-gradient(135deg,var(--teal),var(--teal-deep));color:#fff;border-color:var(--teal-deep);box-shadow:0 4px 10px rgba(47,168,160,.3)}
+.opt-btn:active{transform:scale(.97)}
+.opt-label{font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:14px 0 6px;padding-left:2px}
+.total-row{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:2px solid var(--line)}
+.total-row .tl{font-size:15px;font-weight:600;color:var(--ink-soft)}
+.total-row .tv{font-size:26px;font-weight:800;color:var(--teal-deep)}
+.checkout-btn{width:100%;padding:17px;border-radius:15px;margin-top:14px;background:linear-gradient(135deg,var(--teal),var(--teal-deep));color:#fff;font-weight:800;font-size:17px;box-shadow:0 8px 22px rgba(47,168,160,.4);transition:transform .12s,opacity .15s;display:flex;align-items:center;justify-content:center;gap:9px}
+.checkout-btn:active{transform:scale(.98)}
+.checkout-btn:disabled{opacity:.4;box-shadow:none}
+.checkout-btn svg{width:20px;height:20px}
+
+/* LISTS */
+.list-item{background:var(--surface);border-radius:var(--r-sm);padding:13px 15px;margin-bottom:10px;box-shadow:var(--shadow);display:flex;align-items:center;gap:12px}
+.li-ico{width:44px;height:44px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:22px;flex-shrink:0;overflow:hidden}
+.li-ico img{width:100%;height:100%;object-fit:cover}
+.li-body{flex:1;min-width:0}
+.li-t{font-size:14.5px;font-weight:700;display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+.li-s{font-size:12.5px;color:var(--ink-soft);margin-top:2px}
+.li-r{text-align:right;flex-shrink:0}
+.li-amt{font-size:15px;font-weight:800;color:var(--teal-deep)}
+.li-sub{font-size:11px;color:var(--ink-soft);margin-top:1px}
+
+.chip{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:700}
+.chip.walkin{background:var(--pastel-mint);color:var(--teal-ink)}
+.chip.panda{background:var(--pastel-pink);color:#B03A5B}
+.chip.cash{background:var(--pastel-yellow);color:#9A7420}
+.chip.transfer{background:var(--pastel-sky);color:#2C6E8F}
+.chip.pandapay{background:var(--pastel-lav);color:#5B4B9A}
+.chip.cat{background:#EAF6F6;color:var(--teal-deep)}
+
+/* FORMS */
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.form-grid.full{grid-template-columns:1fr}
+.form-grid.three{grid-template-columns:1fr 1fr 1fr}
+.fg label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);margin-bottom:6px;padding-left:3px}
+.fg input,.fg select,.fg textarea{width:100%;padding:13px 14px;border-radius:12px;border:2px solid var(--line);background:#F4FAFA;font-weight:600;color:var(--ink);transition:border-color .15s,background .15s;font-family:inherit}
+.fg textarea{resize:none;min-height:64px;font-size:15px;line-height:1.5}
+.fg input:focus,.fg select:focus,.fg textarea:focus{outline:none;border-color:var(--teal);background:#fff}
+.fg .unit-in{position:relative}
+.fg .unit-in .u{position:absolute;right:13px;top:50%;transform:translateY(-50%);font-size:12px;color:var(--ink-soft);font-weight:600;pointer-events:none}
+
+.emoji-pick{display:flex;gap:7px;flex-wrap:wrap;margin-top:2px}
+.emoji-opt{width:42px;height:42px;border-radius:11px;background:#F0F8F8;font-size:22px;display:flex;align-items:center;justify-content:center;border:2px solid transparent;transition:border-color .15s,background .15s,transform .1s}
+.emoji-opt.on{border-color:var(--teal);background:var(--pastel-mint)}
+.emoji-opt:active{transform:scale(.92)}
+
+.img-upload{border:2px dashed var(--teal);border-radius:16px;padding:16px;text-align:center;background:#F2FBFA;transition:background .15s;cursor:pointer;position:relative;overflow:hidden}
+.img-upload:active{background:#E7F6F5}
+.img-upload .iu-ico{font-size:30px;margin-bottom:6px}
+.img-upload .iu-t{font-size:13.5px;font-weight:700;color:var(--teal-deep)}
+.img-upload .iu-s{font-size:11.5px;color:var(--ink-soft);margin-top:3px}
+.img-preview{position:relative;border-radius:16px;overflow:hidden;margin-bottom:6px}
+.img-preview img{width:100%;height:180px;object-fit:cover;display:block}
+.img-preview .ip-remove{position:absolute;top:8px;right:8px;width:34px;height:34px;border-radius:10px;background:rgba(193,85,79,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;backdrop-filter:blur(4px)}
+.img-preview .ip-remove:active{transform:scale(.9)}
+.img-preview .ip-change{position:absolute;bottom:8px;right:8px;padding:7px 12px;border-radius:10px;background:rgba(11,46,51,.7);color:#fff;font-size:12px;font-weight:600;backdrop-filter:blur(4px)}
+
+.logo-upload{display:flex;align-items:center;gap:14px;margin-bottom:4px}
+.logo-circle{width:74px;height:74px;border-radius:20px;flex-shrink:0;overflow:hidden;background:linear-gradient(150deg,var(--pastel-sky),var(--pastel-mint));display:flex;align-items:center;justify-content:center;font-size:32px;border:2px solid var(--line);position:relative}
+.logo-circle img{width:100%;height:100%;object-fit:cover}
+.logo-upload .lu-btns{flex:1}
+.logo-upload .lu-btn{padding:11px 14px;border-radius:12px;background:var(--pastel-mint);color:var(--teal-ink);font-size:13.5px;font-weight:700;display:inline-flex;align-items:center;gap:7px;transition:transform .1s}
+.logo-upload .lu-btn:active{transform:scale(.96)}
+.logo-upload .lu-rm{margin-top:8px;font-size:12.5px;color:var(--danger-deep);font-weight:600;background:none;padding:4px}
+
+.btn-save{width:100%;padding:15px;border-radius:13px;margin-top:16px;background:linear-gradient(135deg,var(--teal),var(--teal-deep));color:#fff;font-weight:700;font-size:15px;box-shadow:0 6px 16px rgba(47,168,160,.35);transition:transform .12s;display:flex;align-items:center;justify-content:center;gap:8px}
+.btn-save:active{transform:scale(.98)}
+.btn-save svg{width:18px;height:18px}
+.btn-ghost{width:100%;padding:13px;border-radius:13px;margin-top:10px;background:#F0F8F8;color:var(--ink-soft);font-weight:600;font-size:14px;transition:background .15s}
+.btn-ghost:active{background:var(--line)}
+
+/* recipe builder */
+.recipe-box{background:#F2FBFA;border-radius:14px;padding:14px;border:1.5px solid var(--pastel-mint);margin-top:6px}
+.recipe-row{display:flex;gap:8px;align-items:center;margin-bottom:9px}
+.recipe-row select{flex:1;padding:11px 12px;border-radius:10px;border:2px solid var(--line);background:#fff;font-size:14px;font-weight:600}
+.recipe-row .amt-wrap{position:relative;width:104px;flex-shrink:0}
+.recipe-row .amt-wrap input{width:100%;padding:11px 34px 11px 12px;border-radius:10px;border:2px solid var(--line);background:#fff;font-size:14px;font-weight:600}
+.recipe-row .amt-wrap .amt-u{position:absolute;right:10px;top:50%;transform:translateY(-50%);font-size:11px;color:var(--ink-soft);font-weight:700;pointer-events:none}
+.recipe-row .rm-ing{width:34px;height:34px;border-radius:9px;background:#FBE4E4;color:var(--danger-deep);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:15px;transition:transform .1s}
+.recipe-row .rm-ing:active{transform:scale(.9)}
+.recipe-row .ing-cost{font-size:11px;color:var(--teal-deep);font-weight:700;width:100%;text-align:right;margin-top:-4px}
+.add-ing-btn{width:100%;padding:11px;border-radius:11px;background:#fff;border:1.5px dashed var(--teal);color:var(--teal-deep);font-size:13.5px;font-weight:700;display:flex;align-items:center;justify-content:center;gap:7px;transition:background .12s}
+.add-ing-btn:active{background:#EAF6F6}
+.recipe-empty{text-align:center;color:var(--ink-soft);font-size:12.5px;padding:10px 4px 14px}
+
+.calc-preview{background:#F2FBFA;border-radius:12px;padding:14px 15px;margin-top:14px;border:1.5px solid var(--pastel-mint)}
+.calc-preview .cp-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13.5px}
+.calc-preview .cp-row.sub{border-top:1px dashed var(--pastel-mint);margin-top:4px;padding-top:8px}
+.calc-preview .cp-row.big{border-top:1.5px dashed var(--teal);margin-top:6px;padding-top:9px;font-weight:800;font-size:15px}
+.calc-preview .cp-l{color:var(--ink-soft);font-weight:600}
+.calc-preview .cp-v{font-weight:700}
+.pos-margin{color:var(--teal-deep)}
+
+.margin-btns{display:flex;gap:7px;flex-wrap:wrap;margin-top:6px}
+.margin-btn{flex:1;min-width:56px;padding:11px 6px;border-radius:11px;background:#F0F8F8;border:2px solid transparent;font-size:14px;font-weight:800;color:var(--ink-soft);transition:background .12s,color .12s,border-color .12s,transform .1s}
+.margin-btn.on{background:linear-gradient(135deg,var(--teal),var(--teal-deep));color:#fff;border-color:var(--teal-deep)}
+.margin-btn:active{transform:scale(.95)}
+.suggested-price{background:linear-gradient(135deg,#CDEFE6,#A8DECF);border-radius:12px;padding:13px 16px;margin-top:12px;display:flex;justify-content:space-between;align-items:center}
+.suggested-price .sp-l{font-size:13px;font-weight:700;color:var(--teal-ink)}
+.suggested-price .sp-v{font-size:20px;font-weight:800;color:var(--teal-ink)}
+.use-price-btn{margin-top:10px;width:100%;padding:11px;border-radius:11px;background:var(--pastel-mint);color:var(--teal-ink);font-size:13.5px;font-weight:700;transition:transform .1s}
+.use-price-btn:active{transform:scale(.97)}
+
+.saved-names{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.saved-name-chip{padding:8px 13px;border-radius:20px;background:#EAF6F6;border:1.5px solid var(--line);font-size:13px;font-weight:600;color:var(--ink);display:inline-flex;align-items:center;gap:6px;transition:background .12s,border-color .12s,transform .1s}
+.saved-name-chip:active{transform:scale(.95);background:var(--pastel-mint);border-color:var(--teal)}
+.saved-name-chip .snc-em{font-size:16px}
+.saved-hint{font-size:11.5px;color:var(--ink-soft);margin-top:8px;padding-left:2px}
+
+/* segmented */
+.seg{display:flex;background:#EAF6F6;border-radius:13px;padding:4px;gap:4px;margin-bottom:16px}
+.seg button{flex:1;padding:10px 6px;border-radius:10px;font-size:13px;font-weight:700;color:var(--ink-soft);transition:background .18s,color .18s}
+.seg button.on{background:var(--surface);color:var(--teal-deep);box-shadow:var(--shadow)}
+
+/* bars */
+.bar-item{margin-bottom:14px}
+.bar-top{display:flex;justify-content:space-between;align-items:baseline;margin-bottom:7px}
+.bar-nm{font-size:14px;font-weight:700;display:flex;align-items:center;gap:7px}
+.bar-nm .em{font-size:17px}
+.bar-val{font-size:13px;font-weight:700;color:var(--teal-deep)}
+.bar-track{height:11px;background:#EAF6F6;border-radius:8px;overflow:hidden}
+.bar-fill{height:100%;border-radius:8px;transition:width .6s cubic-bezier(.2,.9,.3,1)}
+.bar-fill.r1{background:linear-gradient(90deg,#2FA8A0,#7CD4C7)}
+.bar-fill.r2{background:linear-gradient(90deg,#5BA3D0,#A9D6EC)}
+.bar-fill.r3{background:linear-gradient(90deg,#8A7BC8,#C7BFEE)}
+.bar-sub{font-size:11px;color:var(--ink-soft);margin-top:4px}
+
+.pay-break{display:grid;grid-template-columns:1fr 1fr 1fr;gap:9px;margin-top:4px}
+.pb{border-radius:13px;padding:13px 10px;text-align:center}
+.pb .pbl{font-size:11.5px;font-weight:600;opacity:.85}
+.pb .pbv{font-size:16px;font-weight:800;margin-top:4px}
+.pb.cash{background:var(--pastel-yellow);color:#8A6816}
+.pb.transfer{background:var(--pastel-sky);color:#2C6E8F}
+.pb.pandapay{background:var(--pastel-lav);color:#5B4B9A}
+
+/* ===== TABLES (stats + ledger) ===== */
+.tbl-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;border-radius:12px;border:1px solid var(--line);margin-top:6px}
+table.data{width:100%;border-collapse:collapse;font-size:12.5px;min-width:100%}
+table.data th{background:#EAF6F6;color:var(--teal-ink);font-weight:700;padding:10px 10px;text-align:right;white-space:nowrap;position:sticky;top:0}
+table.data th:first-child{text-align:left}
+table.data td{padding:9px 10px;text-align:right;white-space:nowrap;border-top:1px solid var(--line)}
+table.data td:first-child{text-align:left;font-weight:600}
+table.data tr:nth-child(even) td{background:#F8FCFC}
+table.data tfoot td{background:#EAF6F6;font-weight:800;border-top:2px solid var(--teal);color:var(--teal-ink)}
+table.data .pos{color:var(--teal-deep);font-weight:700}
+table.data .neg{color:var(--danger-deep);font-weight:700}
+.tbl-scroll-hint{font-size:11px;color:var(--ink-soft);text-align:center;margin-top:7px}
+
+/* ledger day group */
+.day-group{background:var(--surface);border-radius:14px;box-shadow:var(--shadow);margin-bottom:12px;overflow:hidden}
+.day-head{display:flex;justify-content:space-between;align-items:center;padding:12px 15px;background:linear-gradient(135deg,#F2FBFA,#EAF6F6)}
+.day-head .dh-date{font-size:14px;font-weight:800}
+.day-head .dh-sum{display:flex;gap:12px;font-size:12px;font-weight:700}
+.day-head .dh-in{color:var(--income)}
+.day-head .dh-out{color:var(--expense)}
+.day-rows{padding:6px 15px 12px}
+.ledger-row{display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px dashed var(--line)}
+.ledger-row:last-child{border-bottom:none}
+.lr-ico{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0}
+.lr-ico.in{background:var(--pastel-mint)}
+.lr-ico.out{background:var(--pastel-peach)}
+.lr-body{flex:1;min-width:0}
+.lr-t{font-size:13px;font-weight:700}
+.lr-s{font-size:11px;color:var(--ink-soft);margin-top:1px}
+.lr-amt{font-size:13.5px;font-weight:800;flex-shrink:0}
+.lr-amt.in{color:var(--income)}
+.lr-amt.out{color:var(--expense)}
+.lr-del{width:28px;height:28px;border-radius:8px;background:#FBE4E4;color:var(--danger-deep);flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:14px;transition:transform .1s}
+.lr-del:active{transform:scale(.88)}
+
+/* STOCK */
+.stock-row{background:var(--surface);border-radius:var(--r-sm);padding:13px 15px;margin-bottom:10px;box-shadow:var(--shadow)}
+.stock-top{display:flex;align-items:center;gap:11px}
+.stock-emoji{width:42px;height:42px;border-radius:11px;background:#F0F8F8;display:flex;align-items:center;justify-content:center;font-size:21px;flex-shrink:0}
+.stock-info{flex:1;min-width:0}
+.stock-nm{font-size:14.5px;font-weight:700}
+.stock-qty{font-size:12.5px;color:var(--ink-soft);margin-top:1px}
+.stock-badge{padding:4px 11px;border-radius:20px;font-size:11.5px;font-weight:700;flex-shrink:0}
+.stock-badge.ok{background:var(--pastel-mint);color:var(--teal-ink)}
+.stock-badge.low{background:var(--pastel-peach);color:#B5651D}
+.stock-badge.out{background:#FBD5D5;color:var(--danger-deep)}
+.stock-bar{height:8px;background:#EAF6F6;border-radius:6px;overflow:hidden;margin-top:11px}
+.stock-fill{height:100%;border-radius:6px;transition:width .5s}
+.stock-actions{display:flex;gap:8px;margin-top:11px}
+.stock-actions button{flex:1;padding:9px;border-radius:10px;font-size:12.5px;font-weight:700;transition:transform .1s}
+.sa-add{background:var(--pastel-mint);color:var(--teal-ink)}
+.sa-use{background:#F0F8F8;color:var(--ink-soft)}
+.stock-actions button:active{transform:scale(.96)}
+.cost-per-base{font-size:11px;color:var(--teal-deep);font-weight:700;margin-top:3px}
+.stock-grid{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px;margin-top:12px}
+.sg-cell{background:#F4FAFA;border-radius:10px;padding:9px 8px;text-align:center}
+.sg-l{font-size:10.5px;color:var(--ink-soft);font-weight:600}
+.sg-v{font-size:15px;font-weight:800;margin-top:3px;color:var(--ink)}
+.sg-v small{font-size:10px;font-weight:600;color:var(--ink-soft)}
+.sg-v.used{color:var(--expense)}
+.sg-v.left{color:var(--teal-deep)}
+.stock-sub{font-size:11px;color:var(--ink-soft);text-align:right;margin-top:6px}
+
+.alert-banner{background:linear-gradient(135deg,#FCE4D2,#F8CBAA);border-radius:var(--r);padding:14px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;box-shadow:var(--shadow)}
+.alert-banner .ab-ico{width:38px;height:38px;border-radius:11px;background:rgba(255,255,255,.6);display:flex;align-items:center;justify-content:center;font-size:20px;flex-shrink:0}
+.alert-banner .ab-txt{flex:1}
+.alert-banner .ab-t{font-size:14px;font-weight:800;color:#B5651D}
+.alert-banner .ab-s{font-size:12.5px;color:#96552F;margin-top:1px}
+
+.empty-state{text-align:center;padding:40px 20px;color:var(--ink-soft)}
+.empty-state .es-em{font-size:52px;display:block;margin-bottom:14px;opacity:.7}
+.empty-state .es-t{font-size:16px;font-weight:700;color:var(--ink)}
+.empty-state .es-s{font-size:13.5px;margin-top:6px;line-height:1.6}
+
+.month-nav{display:flex;align-items:center;justify-content:space-between;background:var(--surface);border-radius:14px;padding:8px 10px;margin-bottom:16px;box-shadow:var(--shadow)}
+.month-nav button{width:38px;height:38px;border-radius:11px;background:#F0F8F8;display:flex;align-items:center;justify-content:center;transition:transform .1s,background .1s}
+.month-nav button:active{transform:scale(.92);background:var(--pastel-mint)}
+.month-nav button svg{width:18px;height:18px}
+.month-nav .mlabel{font-size:16px;font-weight:800;text-align:center}
+.month-nav .mlabel small{display:block;font-size:11px;color:var(--ink-soft);font-weight:500}
+
+/* MODAL */
+.modal-back{position:fixed;inset:0;z-index:200;background:rgba(11,46,51,.5);display:flex;align-items:flex-end;justify-content:center;animation:fadeBack .2s;backdrop-filter:blur(3px)}
+@keyframes fadeBack{from{opacity:0}to{opacity:1}}
+.modal{background:var(--surface);width:100%;max-width:480px;border-top-left-radius:26px;border-top-right-radius:26px;padding:10px 20px max(24px,env(safe-area-inset-bottom));max-height:92vh;overflow-y:auto;animation:slideUp .32s cubic-bezier(.2,.9,.3,1.05)}
+@keyframes slideUp{from{transform:translateY(100%)}to{transform:none}}
+.modal-grip{width:44px;height:5px;border-radius:5px;background:var(--line);margin:6px auto 16px}
+.modal h3{font-size:19px;font-weight:800;margin-bottom:4px}
+.modal .msub{font-size:13px;color:var(--ink-soft);margin-bottom:18px}
+
+.receipt{background:#FBFEFE;border-radius:16px;padding:18px 16px;border:1.5px dashed var(--teal);max-width:280px;margin:0 auto}
+.receipt-head{text-align:center;border-bottom:2px dashed var(--line);padding-bottom:12px;margin-bottom:12px}
+.receipt-head .rlogo{width:52px;height:52px;border-radius:14px;margin:0 auto 6px;overflow:hidden;display:flex;align-items:center;justify-content:center;font-size:30px;background:linear-gradient(150deg,var(--pastel-sky),var(--pastel-mint))}
+.receipt-head .rlogo img{width:100%;height:100%;object-fit:cover}
+.receipt-head .rname{font-size:16px;font-weight:800;margin-top:2px}
+.receipt-head .raddr{font-size:11px;color:var(--ink-soft);margin-top:4px;line-height:1.5}
+.receipt-head .rid{font-size:13px;color:var(--teal-deep);font-weight:700;margin-top:7px;letter-spacing:.5px}
+.receipt-head .rdate{font-size:11px;color:var(--ink-soft);margin-top:3px}
+.receipt-row{display:flex;justify-content:space-between;font-size:13px;padding:4px 0}
+.receipt-row .rq{color:var(--ink-soft);font-weight:600;flex:1;padding-right:8px}
+.receipt-total{display:flex;justify-content:space-between;font-size:16px;font-weight:800;border-top:2px dashed var(--teal);margin-top:10px;padding-top:10px;color:var(--teal-deep)}
+.receipt-meta{display:flex;gap:6px;margin-top:12px;justify-content:center;flex-wrap:wrap}
+.receipt-foot{text-align:center;font-size:11px;color:var(--ink-soft);margin-top:14px;border-top:2px dashed var(--line);padding-top:10px;line-height:1.5}
+
+.toast{position:fixed;top:calc(env(safe-area-inset-top) + 14px);left:50%;transform:translateX(-50%) translateY(-160%);background:var(--teal-ink);color:#fff;padding:13px 22px;border-radius:14px;font-size:14px;font-weight:600;z-index:300;box-shadow:var(--shadow-lg);display:flex;align-items:center;gap:9px;transition:transform .38s cubic-bezier(.2,.9,.3,1.2);max-width:88%}
+.toast.show{transform:translateX(-50%) translateY(0)}
+.toast.err{background:var(--danger-deep)}
+.toast svg{width:18px;height:18px;flex-shrink:0}
+
+.add-btn-row{display:flex;align-items:center;justify-content:center;gap:8px;background:var(--surface);border:2px dashed var(--teal);border-radius:14px;padding:14px;color:var(--teal-deep);font-weight:700;font-size:14px;margin-bottom:14px;transition:background .15s,transform .1s;width:100%}
+.add-btn-row:active{transform:scale(.99);background:#F2FBFA}
+.add-btn-row svg{width:19px;height:19px}
+
+.divider-lbl{font-size:12px;font-weight:700;color:var(--ink-soft);text-transform:uppercase;letter-spacing:.5px;margin:20px 0 12px;display:flex;align-items:center;gap:10px}
+.divider-lbl::after{content:'';flex:1;height:1.5px;background:var(--line)}
+
+.mini-stat{display:flex;gap:10px;margin-bottom:14px}
+.mini-stat .ms{flex:1;background:var(--surface);border-radius:14px;padding:13px;box-shadow:var(--shadow);text-align:center}
+.mini-stat .ms .msl{font-size:11.5px;color:var(--ink-soft);font-weight:600}
+.mini-stat .ms .msv{font-size:19px;font-weight:800;margin-top:3px}
+.mini-stat .ms .msv.g{color:var(--teal-deep)}
+.mini-stat .ms .msv.in{color:var(--income)}
+.mini-stat .ms .msv.out{color:var(--expense)}
+
+.tiny-note{font-size:11.5px;color:var(--ink-soft);text-align:center;margin-top:8px;line-height:1.5}
+.del-x{width:30px;height:30px;border-radius:9px;background:#FBE4E4;color:var(--danger-deep);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px;transition:transform .1s}
+.del-x:active{transform:scale(.9)}
+
+select{-webkit-appearance:none;appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%234A6B70' stroke-width='3'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 14px center;padding-right:38px!important}
+@media (prefers-reduced-motion: reduce){*{animation-duration:.01ms!important;transition-duration:.05ms!important}}
+</style>
+</head>
+<body>
+
+<div id="loginScreen">
+  <div class="login-card">
+    <div class="brand-badge">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+    </div>
+    <h1>ລະບົບຂາຍ POS</h1>
+    <p class="sub">ຮ້ານເຄື່ອງດື່ມ · ເຂົ້າສູ່ລະບົບ</p>
+    <div class="field"><label>ຊື່ຜູ້ໃຊ້</label><input type="text" id="username" placeholder="ປ້ອນຊື່ຜູ້ໃຊ້" autocomplete="off"></div>
+    <div class="field"><label>ລະຫັດຜ່ານ</label><input type="password" id="password" placeholder="ປ້ອນລະຫັດຜ່ານ" autocomplete="off"></div>
+    <button class="btn-primary" onclick="doLogin()">ເຂົ້າສູ່ລະບົບ</button>
+    <div class="login-err" id="loginErr"></div>
+    <div class="login-hint">ຄັ້ງທຳອິດໃຫ້ຕັ້ງຊື່ ແລະ ລະຫັດເອງ<br>ຄັ້ງຕໍ່ໄປໃຊ້ອັນເກົ່າເຂົ້າ</div>
+  </div>
+</div>
+
+<div id="app" class="hidden">
+  <div class="topbar">
+    <div class="tt">
+      <div class="logo-sm" id="topLogo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>
+      </div>
+      <div class="txt-wrap">
+        <div class="ttl" id="topName">ຮ້ານເຄື່ອງດື່ມ</div>
+        <div class="ttl"><small id="topSub">ພ້ອມຂາຍ</small></div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:8px">
+      <button id="syncBadge" onclick="nav('menu');setTimeout(()=>{const el=document.getElementById('syncSection');if(el)el.scrollIntoView({behavior:'smooth'});},120)" style="display:flex;align-items:center;gap:4px;font-size:11px;font-weight:700;background:#F0F8F8;padding:7px 10px;border-radius:11px;color:#8899aa"><span style="font-size:10px">⚪</span> ເຄື່ອງດຽວ</button>
+      <button class="icon-btn" onclick="logout()" title="ອອກ">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#0B2E33" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      </button>
+    </div>
+  </div>
+
+  <div class="main" id="mainContent"></div>
+
+  <div class="navbar">
+    <button class="nav-item active" data-page="sell" onclick="nav('sell')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="21" r="1"/><circle cx="20" cy="21" r="1"/><path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"/></svg>
+      <span>ຂາຍ</span>
+    </button>
+    <button class="nav-item" data-page="finance" onclick="nav('finance')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+      <span>ຮັບ-ຈ່າຍ</span>
+    </button>
+    <button class="nav-item" data-page="stats" onclick="nav('stats')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <span>ສະຖິຕິ</span>
+    </button>
+    <button class="nav-item" data-page="stock" onclick="nav('stock')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+      <span>ສາງ</span>
+    </button>
+    <button class="nav-item" data-page="menu" onclick="nav('menu')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+      <span>ເມນູ</span>
+    </button>
+  </div>
+</div>
+
+<div class="toast" id="toast"></div>
+<div id="modalRoot"></div>
+<input type="file" id="fileMenuImg" accept="image/*" class="hidden">
+<input type="file" id="fileLogoImg" accept="image/*" class="hidden">
+<input type="file" id="fileQrImg" accept="image/*" class="hidden">
+<input type="file" id="fileImport" accept="application/json,.json" class="hidden">
+
+<script>
+/* ============================================================
+   ໂຄງສ້າງ CONSTANTS
+   ============================================================ */
+const LAO_MONTHS=['ມັງກອນ','ກຸມພາ','ມີນາ','ເມສາ','ພຶດສະພາ','ມິຖຸນາ','ກໍລະກົດ','ສິງຫາ','ກັນຍາ','ຕຸລາ','ພະຈິກ','ທັນວາ'];
+const EN_MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
+// ໄອຄອນເມນູ (ເພີ່ມໃຫ້ຫຼາຍຂຶ້ນ 36 ອັນ)
+const EMOJI_SET=['🥤','🧋','☕','🧃','🍵','🥛','🧉','🍹','🫖','🍶','🧊','🍺','🍽️','🍰','🍨','🍮','🧁','🍩','🍪','🥧','🍦','🍧','🥞','🧇','🍮','🍫','🍓','🥭','🍊','🍋','🍇','🍈','🥥','🍠','🍡','🧆'];
+// ໄອຄອນວັດຖຸດິບ (ເພີ່ມໃໝ່ 20+ ອັນ)
+const ING_EMOJIS=['🍵','☕','🥛','🍯','🧊','🥤','🧋','📦','🫙','🍶','🧃','🥥','🍫','🍓','🥭','🍊','🍋','🍇','🫐','🍒','🥜','🌰','🧂','🧈','🥚','🍚','🫖','🧉','🍶','🍬','🍭','🧴'];
+
+// ປະເພດເມນູ (default — ບັນທຶກ/ເພີ່ມເອງໄດ້ໃນ state.menuCats)
+const DEFAULT_MENU_CATS=[
+  {id:'drink', name:'ເຄື່ອງດື່ມ', emoji:'🥤'},
+  {id:'food',  name:'ອາຫານ',    emoji:'🍽️'},
+  {id:'dessert',name:'ຂະໜົມ',   emoji:'🍰'},
+  {id:'icecream',name:'ກະແລ້ມ', emoji:'🍨'},
+];
+// ປະເພດວັດຖຸດິບ (default — ບັນທຶກ/ເພີ່ມເອງໄດ້ໃນ state.ingCats)
+const DEFAULT_ING_CATS=[
+  {id:'tea',name:'ຊາ/ກາເຟ',emoji:'🍵'},
+  {id:'milk',name:'ນົມ',emoji:'🥛'},
+  {id:'syrup',name:'ໄຊລັບ/ນ້ຳຫວານ',emoji:'🍯'},
+  {id:'topping',name:'ທັອບປິ້ງ',emoji:'🧋'},
+  {id:'cup',name:'ຈອກ/ອຸປະກອນ',emoji:'🥤'},
+  {id:'other',name:'ອື່ນໆ',emoji:'📦'},
+];
+// ໜ່ວຍ base ທີ່ໃຫ້ເລືອກ
+const BASE_UNITS=['ml','g','ຈອກ','ບ່ວງ','ຊິ້ນ','ໜ່ວຍ'];
+// ປະເພດລາຍຈ່າຍ (default — ບັນທຶກ/ເພີ່ມເອງໄດ້ໃນ state.expenseCats)
+const DEFAULT_EXPENSE_CATS=[
+  {id:'ingredient',name:'ຄ່າວັດຖຸດິບ/ເຄື່ອງປຸງ',emoji:'🧺'},
+  {id:'utility',name:'ຄ່ານ້ຳ/ຄ່າໄຟ',emoji:'💡'},
+  {id:'labor',name:'ຄ່າແຮງງານ',emoji:'👷'},
+  {id:'rent',name:'ຄ່າເຊົ່າ',emoji:'🏠'},
+  {id:'other',name:'ອື່ນໆ',emoji:'📋'},
+];
+// ປະເພດລາຍຮັບ (default — ນອກຈາກການຂາຍ)
+const DEFAULT_INCOME_CATS=[
+  {id:'sale',name:'ຂາຍໜ້າຮ້ານ',emoji:'🛒'},
+  {id:'other_income',name:'ລາຍຮັບອື່ນໆ',emoji:'💰'},
+];
+
+const DB={
+  get(k,def){ try{const v=localStorage.getItem('pos_'+k);return v?JSON.parse(v):def;}catch(e){return def;} },
+  set(k,v){ try{localStorage.setItem('pos_'+k,JSON.stringify(v));}catch(e){toast('ພື້ນທີ່ເກັບຂໍ້ມູນເຕັມ ລອງລຶບຮູບເກົ່າ',true);} },
+};
+
+let state={
+  user:DB.get('user',null),
+  shop:DB.get('shop',null),
+  menu:DB.get('menu',null),
+  ingredients:DB.get('ingredients',null),
+  orders:DB.get('orders',[]),
+  expenses:DB.get('expenses',null),
+  incomes:DB.get('incomes',null),          // ລາຍຮັບອື່ນ (ນອກຈາກການຂາຍ)
+  savedNames:DB.get('savedNames',null),
+  menuCats:DB.get('menuCats',null),        // ປະເພດເມນູ (ເພີ່ມເອງ)
+  ingCats:DB.get('ingCats',null),          // ປະເພດວັດຖຸດິບ (ເພີ່ມເອງ)
+  expenseCats:DB.get('expenseCats',null),  // ປະເພດລາຍຈ່າຍ (ເພີ່ມເອງ)
+  incomeCats:DB.get('incomeCats',null),    // ປະເພດລາຍຮັບ (ເພີ່ມເອງ)
+  cart:{}, channel:'walkin', payment:'cash',
+  viewMonth:(new Date()).getMonth(), viewYear:(new Date()).getFullYear(),
+  sellCat:'all',
+};
+
+/* ============================================================
+   SEED DEFAULTS
+   ============================================================ */
+function seedDefaults(){
+  if(!state.shop){
+    state.shop={name:'ຮ້ານເຄື່ອງດື່ມ',logo:null,village:'',district:'',province:'',road:'',extra:'',overheadPct:25};
+    DB.set('shop',state.shop);
+  }
+  if(state.shop.overheadPct==null){ state.shop.overheadPct=25; DB.set('shop',state.shop); }
+
+  if(!state.ingredients){
+    // ໂຄງສ້າງໃໝ່: unit=ຫົວໜ່ວຍ(ຕຸກ/ຖົງ) · qtyPerUnit=ປະລິມານຕໍ່ຫົວໜ່ວຍ · purchaseCost=ລາຄາຕໍ່ຫົວໜ່ວຍ
+    //   stock=ຍັງເຫຼືອ(ໜ່ວຍໃຊ້) · used=ໃຊ້ແລ້ວສະສົມ(ໜ່ວຍໃຊ້) · ຕົ້ນທຶນ/ໜ່ວຍໃຊ້ = purchaseCost/qtyPerUnit
+    state.ingredients=[
+      {id:'ing1',name:'ຊາໄທ',emoji:'🍵',category:'tea',unit:'ຖົງ',qtyPerUnit:400,baseUnit:'g',purchaseCost:45000,stock:1200,used:0,lowAt:200},
+      {id:'ing2',name:'ຜົງກາເຟ',emoji:'☕',category:'tea',unit:'ຖົງ',qtyPerUnit:500,baseUnit:'g',purchaseCost:55000,stock:1500,used:0,lowAt:250},
+      {id:'ing3',name:'ນົມຂຸ້ນຫວານ',emoji:'🥛',category:'milk',unit:'ກະປ໋ອງ',qtyPerUnit:380,baseUnit:'ml',purchaseCost:12000,stock:2280,used:0,lowAt:400},
+      {id:'ing4',name:'ນົມສົດ',emoji:'🥛',category:'milk',unit:'ຕຸກ',qtyPerUnit:1500,baseUnit:'ml',purchaseCost:55000,stock:4500,used:0,lowAt:1000},
+      {id:'ing5',name:'ນ້ຳຕານ',emoji:'🍯',category:'syrup',unit:'ກິໂລ',qtyPerUnit:1000,baseUnit:'g',purchaseCost:15000,stock:3000,used:0,lowAt:500},
+      {id:'ing6',name:'ນ້ຳກ້ອນ',emoji:'🧊',category:'other',unit:'ຖົງ',qtyPerUnit:2000,baseUnit:'g',purchaseCost:5000,stock:8000,used:0,lowAt:2000},
+      {id:'ing7',name:'ຈອກພລາສຕິກ',emoji:'🥤',category:'cup',unit:'ແພັກ',qtyPerUnit:50,baseUnit:'ໜ່ວຍ',purchaseCost:25000,stock:120,used:0,lowAt:30},
+    ];
+    DB.set('ingredients',state.ingredients);
+  }
+  if(!state.menu){
+    state.menu=[
+      {id:'m1',name:'ຊາໄທເຢັນ',emoji:'🧋',img:null,category:'drink',price:15000,overridePct:null,
+        recipe:[{ingredientId:'ing1',amount:25},{ingredientId:'ing3',amount:30},{ingredientId:'ing6',amount:150},{ingredientId:'ing7',amount:1}]},
+      {id:'m2',name:'ກາເຟເຢັນ',emoji:'☕',img:null,category:'drink',price:18000,overridePct:null,
+        recipe:[{ingredientId:'ing2',amount:20},{ingredientId:'ing3',amount:30},{ingredientId:'ing6',amount:150},{ingredientId:'ing7',amount:1}]},
+      {id:'m3',name:'ນົມສົດເຢັນ',emoji:'🥛',img:null,category:'drink',price:12000,overridePct:null,
+        recipe:[{ingredientId:'ing4',amount:200},{ingredientId:'ing5',amount:15},{ingredientId:'ing6',amount:100},{ingredientId:'ing7',amount:1}]},
+    ];
+    DB.set('menu',state.menu);
+  }
+  if(!state.expenses){ state.expenses=[]; DB.set('expenses',state.expenses); }
+  if(!state.incomes){ state.incomes=[]; DB.set('incomes',state.incomes); }
+  if(!state.savedNames){
+    state.savedNames=state.menu.map(m=>({name:m.name,emoji:m.emoji}));
+    DB.set('savedNames',state.savedNames);
+  }
+  // ປະເພດ (ເພີ່ມ/ບັນທຶກເອງໄດ້)
+  if(!state.menuCats){ state.menuCats=DEFAULT_MENU_CATS.map(c=>({...c})); DB.set('menuCats',state.menuCats); }
+  if(!state.ingCats){ state.ingCats=DEFAULT_ING_CATS.map(c=>({...c})); DB.set('ingCats',state.ingCats); }
+  if(!state.expenseCats){ state.expenseCats=DEFAULT_EXPENSE_CATS.map(c=>({...c})); DB.set('expenseCats',state.expenseCats); }
+  if(!state.incomeCats){ state.incomeCats=DEFAULT_INCOME_CATS.map(c=>({...c})); DB.set('incomeCats',state.incomeCats); }
+
+  // ★ Migration: ຍ້າຍ ingredient ຈາກໂຄງສ້າງເກົ່າ (purchaseUnit/qtyPerPurchase) ມາໃໝ່ (unit/qtyPerUnit/used)
+  let migrated=false;
+  (state.ingredients||[]).forEach(i=>{
+    if(i.unit===undefined && i.purchaseUnit!==undefined){ i.unit=i.purchaseUnit; migrated=true; }
+    if(i.qtyPerUnit===undefined && i.qtyPerPurchase!==undefined){ i.qtyPerUnit=i.qtyPerPurchase; migrated=true; }
+    if(i.used===undefined){ i.used=0; migrated=true; }
+    if(i.unit===undefined){ i.unit='ໜ່ວຍ'; migrated=true; }
+    if(i.qtyPerUnit===undefined){ i.qtyPerUnit=1; migrated=true; }
+  });
+  if(migrated) DB.set('ingredients',state.ingredients);
+}
+function save(){
+  DB.set('menu',state.menu); DB.set('ingredients',state.ingredients);
+  DB.set('orders',state.orders); DB.set('shop',state.shop);
+  DB.set('expenses',state.expenses); DB.set('incomes',state.incomes);
+  DB.set('savedNames',state.savedNames);
+  DB.set('menuCats',state.menuCats); DB.set('ingCats',state.ingCats);
+  DB.set('expenseCats',state.expenseCats); DB.set('incomeCats',state.incomeCats);
+  SYNC.markDirty();       // ★ ບອກ sync layer ວ່າຂໍ້ມູນປ່ຽນ → push ຂຶ້ນ cloud + ແຈ້ງແທັບອື່ນ
+}
+
+/* ============================================================
+   ★★★ SYNC LAYER — ຫຼາຍເຄື່ອງ / ຣຽວທາມ / ກູ້-ອິມພອດ
+   ໂຄງສ້າງ 3 ຊັ້ນ:
+   1) Local (localStorage)        — ໄວ ໃຊ້ offline ໄດ້ສະເໝີ
+   2) Cross-tab (BroadcastChannel)— ຫຼາຍແທັບ/ໜ້າຕ່າງ ໃນເຄື່ອງດຽວ ຣຽວທາມ
+   3) Cloud (Firebase Firestore)  — ຫຼາຍເຄື່ອງແທ້ ຣຽວທາມ (ຕ້ອງໃສ່ config)
+   ============================================================ */
+const SYNC_KEYS=['shop','menu','ingredients','orders','expenses','incomes','savedNames','menuCats','ingCats','expenseCats','incomeCats'];
+
+const SYNC={
+  deviceId:null,
+  channel:null,
+  fb:null,              // {app, db} ເມື່ອ Firebase ພ້ອມ
+  status:'local',       // 'local' | 'connecting' | 'online' | 'error'
+  lastError:'',
+  lastPush:0, lastPull:0,
+  pushTimer:null,
+  applyingRemote:false, // ກັນ loop: ຕອນຮັບຈາກ cloud ບໍ່ push ກັບ
+  suppressBroadcast:false,
+
+  init(){
+    // device id ຄົງທີ່ຕໍ່ເຄື່ອງ
+    this.deviceId=DB.get('deviceId',null);
+    if(!this.deviceId){ this.deviceId='dev_'+Math.random().toString(36).slice(2,10); DB.set('deviceId',this.deviceId); }
+    // cross-tab channel
+    try{
+      this.channel=new BroadcastChannel('pos_sync');
+      this.channel.onmessage=(ev)=>{ if(ev.data&&ev.data.type==='update'&&ev.data.from!==this.deviceId) this._applyBundle(ev.data.bundle,'tab'); };
+    }catch(e){ this.channel=null; }
+    // storage event = fallback ຂ້າມແທັບ (ຖ້າ BroadcastChannel ບໍ່ມີ)
+    window.addEventListener('storage',(e)=>{
+      if(e.key==='pos_syncPing'){ this._reloadLocalIntoState(); if(currentPage&&!$('app').classList.contains('hidden')) refreshSoft(); }
+    });
+    // ພະຍາຍາມຕໍ່ cloud ຖ້າມີ config
+    const cfg=DB.get('fbConfig',null);
+    if(cfg) this.connectCloud(cfg);
+  },
+
+  markDirty(){
+    if(this.applyingRemote) return;   // ຢ່າ push ຂໍ້ມູນທີ່ຫາກໍຮັບມາຈາກ cloud
+    // ແຈ້ງແທັບອື່ນທັນທີ (ຣຽວທາມ)
+    this._broadcast();
+    // push ຂຶ້ນ cloud ແບບ debounce (ກັນ spam)
+    if(this.fb){
+      clearTimeout(this.pushTimer);
+      this.pushTimer=setTimeout(()=>this.pushCloud(),800);
+    }
+  },
+
+  _bundle(){
+    const b={_meta:{from:this.deviceId,ts:Date.now(),ver:3}};
+    SYNC_KEYS.forEach(k=>{ b[k]=DB.get(k,null); });
+    return b;
+  },
+  _broadcast(){
+    if(this.suppressBroadcast) return;
+    if(this.channel){ try{ this.channel.postMessage({type:'update',from:this.deviceId,bundle:this._bundle()}); }catch(e){} }
+    // storage ping (fallback) — ຂຽນຄ່າ unique ໃຫ້ແທັບອື່ນ fire 'storage'
+    try{ localStorage.setItem('pos_syncPing', Date.now()+'_'+this.deviceId); }catch(e){}
+  },
+
+  // ນຳ bundle (ຈາກ tab/cloud) ມາຂຽນລົງ local + state ໂດຍບໍ່ push ກັບ
+  _applyBundle(bundle,source){
+    if(!bundle) return;
+    this.applyingRemote=true; this.suppressBroadcast=true;
+    try{
+      SYNC_KEYS.forEach(k=>{ if(bundle[k]!==undefined && bundle[k]!==null) DB.set(k,bundle[k]); });
+      this._reloadLocalIntoState();
+      this.lastPull=Date.now();
+      if(currentPage&&!$('app').classList.contains('hidden')) refreshSoft();
+    }finally{
+      this.applyingRemote=false; this.suppressBroadcast=false;
+    }
+  },
+  _reloadLocalIntoState(){
+    SYNC_KEYS.forEach(k=>{ const v=DB.get(k,null); if(v!==null) state[k]=v; });
+  },
+
+  /* ---------- CLOUD (Firebase Firestore) ---------- */
+  async connectCloud(cfg){
+    this.status='connecting'; this.lastError=''; updateSyncBadge();
+    try{
+      // ໂຫຼດ Firebase SDK (modular, ຜ່ານ CDN) — ຄັ້ງດຽວ
+      if(!window._fbmods){
+        const appMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+        const fsMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+        window._fbmods={appMod,fsMod};
+      }
+      const {initializeApp}=window._fbmods.appMod;
+      const {getFirestore,doc,setDoc,onSnapshot}=window._fbmods.fsMod;
+      const app=initializeApp(cfg, 'pos_'+Date.now());
+      const db=getFirestore(app);
+      this.fb={app,db,doc,setDoc,onSnapshot};
+      // ໃຊ້ 1 ເອກະສານຕໍ່ 1 ຮ້ານ (ອີງໃສ່ storeId ຈາກ config ຫຼື ຄ່າຄົງທີ່)
+      const storeId=DB.get('storeId',null)||(()=>{const s='store_'+(cfg.projectId||'main');DB.set('storeId',s);return s;})();
+      this.docRef=doc(db,'pos_stores',storeId);
+      // ຟັງການປ່ຽນແປງ (ຣຽວທາມ)
+      this.unsub=onSnapshot(this.docRef,(snap)=>{
+        if(!snap.exists()) return;
+        const data=snap.data();
+        if(!data||!data.bundle) return;
+        let bundle; try{ bundle=JSON.parse(data.bundle); }catch(e){ return; }
+        if(bundle._meta && bundle._meta.from===this.deviceId) return; // ຂອງເຮົາເອງ ຂ້າມ
+        this._applyBundle(bundle,'cloud');
+        toast('🔄 ອັບເດດຈາກອຸປະກອນອື່ນແລ້ວ');
+      },(err)=>{ this.status='error'; this.lastError=err.message||'onSnapshot error'; updateSyncBadge(); });
+      this.status='online'; this.lastError=''; updateSyncBadge();
+      // push ຄັ້ງທຳອິດ ໃຫ້ cloud ມີຂໍ້ມູນຫຼ້າສຸດ
+      this.pushCloud();
+      return true;
+    }catch(e){
+      this.status='error'; this.lastError=(e&&e.message)||String(e); updateSyncBadge();
+      return false;
+    }
+  },
+  async pushCloud(){
+    if(!this.fb||!this.docRef) return;
+    try{
+      const payload=JSON.stringify(this._bundle());
+      await this.fb.setDoc(this.docRef,{bundle:payload, updatedAt:Date.now(), device:this.deviceId});
+      this.lastPush=Date.now(); this.status='online'; updateSyncBadge();
+    }catch(e){
+      this.status='error'; this.lastError=(e&&e.message)||String(e); updateSyncBadge();
+    }
+  },
+  disconnectCloud(){
+    try{ if(this.unsub)this.unsub(); }catch(e){}
+    this.fb=null; this.docRef=null; this.unsub=null;
+    this.status='local'; DB.set('fbConfig',null); updateSyncBadge();
+  },
+
+  /* ---------- HEALTH / READINESS ---------- */
+  health(){
+    const checks=[];
+    // 1) localStorage ໃຊ້ໄດ້
+    let lsOk=false; try{ localStorage.setItem('pos_test','1'); localStorage.removeItem('pos_test'); lsOk=true; }catch(e){}
+    checks.push({name:'ບ່ອນເກັບຂໍ້ມູນໃນເຄື່ອງ (localStorage)', ok:lsOk, critical:true});
+    // 2) cross-tab
+    checks.push({name:'ຊິ້ງຂ້າມແທັບ (BroadcastChannel)', ok:!!this.channel, critical:false});
+    // 3) cloud configured
+    const hasCfg=!!DB.get('fbConfig',null);
+    checks.push({name:'ຕັ້ງຄ່າ Cloud (Firebase)', ok:hasCfg, critical:false});
+    // 4) cloud online
+    checks.push({name:'ເຊື່ອມຕໍ່ Cloud ຣຽວທາມ', ok:this.status==='online', critical:false, detail:hasCfg?(this.status==='error'?this.lastError:''):'(ຍັງບໍ່ໄດ້ຕັ້ງຄ່າ)'});
+    // 5) data integrity (gap scan)
+    const gaps=scanGaps();
+    checks.push({name:'ຄວາມຄົບຖ້ວນຂອງຂໍ້ມູນ', ok:gaps.length===0, critical:false, detail:gaps.length?gaps.length+' ຈຸດຕ້ອງແກ້':''});
+    // readiness %
+    const wResolved = checks.filter(c=>c.ok).length;
+    const pct=Math.round(wResolved/checks.length*100);
+    return {checks, pct, gaps};
+  },
+};
+
+/* ---------- GAP SCANNER + REPAIR ---------- */
+function scanGaps(){
+  const gaps=[];
+  try{
+    // ວັດຖຸດິບ: field ຄົບ, ບໍ່ຕິດລົບ
+    (state.ingredients||[]).forEach(i=>{
+      if(i.qtyPerUnit===undefined||i.qtyPerUnit<=0) gaps.push({kind:'ing_qty',id:i.id,msg:esc(i.name)+': ບໍ່ມີປະລິມານຕໍ່ຫົວໜ່ວຍ'});
+      if(i.stock===undefined||i.stock<0) gaps.push({kind:'ing_stock',id:i.id,msg:esc(i.name)+': ຍອດເຫຼືອຜິດປົກກະຕິ'});
+      if(i.used===undefined) gaps.push({kind:'ing_used',id:i.id,msg:esc(i.name)+': ບໍ່ມີຄ່າໃຊ້ແລ້ວ'});
+      if(i.unit===undefined) gaps.push({kind:'ing_unit',id:i.id,msg:esc(i.name)+': ບໍ່ມີຫົວໜ່ວຍ'});
+    });
+    // ເມນູ: recipe ອ້າງອີງວັດຖຸດິບທີ່ຫາຍ, category ຫາຍ
+    (state.menu||[]).forEach(m=>{
+      (m.recipe||[]).forEach(r=>{ if(!findIng(r.ingredientId)) gaps.push({kind:'menu_recipe',id:m.id,msg:esc(m.name)+': ສູດອ້າງອີງວັດຖຸດິບທີ່ຖືກລຶບ'}); });
+      if(m.category&&!state.menuCats.find(c=>c.id===m.category)) gaps.push({kind:'menu_cat',id:m.id,msg:esc(m.name)+': ປະເພດຫາຍ'});
+      if(m.price===undefined||m.price<0) gaps.push({kind:'menu_price',id:m.id,msg:esc(m.name)+': ລາຄາຜິດ'});
+    });
+    // ອໍເດີ້: field ຫຼັກຄົບ
+    (state.orders||[]).forEach(o=>{
+      if(o.total===undefined||!Array.isArray(o.items)) gaps.push({kind:'order_bad',id:o.id,msg:'ບິນ '+(o.no||'?')+': ໂຄງສ້າງຜິດ'});
+    });
+    // expense/income category ຫາຍ
+    (state.expenses||[]).forEach(e=>{ if(!state.expenseCats.find(c=>c.id===e.category)) gaps.push({kind:'exp_cat',id:e.id,msg:'ລາຍຈ່າຍ: ປະເພດຫາຍ'}); });
+    (state.incomes||[]).forEach(i=>{ if(!state.incomeCats.find(c=>c.id===i.category)) gaps.push({kind:'inc_cat',id:i.id,msg:'ລາຍຮັບ: ປະເພດຫາຍ'}); });
+  }catch(e){ gaps.push({kind:'scan_err',msg:'ສະແກນຜິດພາດ: '+(e.message||e)}); }
+  return gaps;
+}
+function repairGaps(){
+  let fixed=0;
+  const gaps=scanGaps();
+  gaps.forEach(g=>{
+    if(g.kind==='ing_qty'){ const i=findIng(g.id); if(i){ i.qtyPerUnit=i.qtyPerUnit>0?i.qtyPerUnit:1; fixed++; } }
+    else if(g.kind==='ing_stock'){ const i=findIng(g.id); if(i){ i.stock=Math.max(0,i.stock||0); fixed++; } }
+    else if(g.kind==='ing_used'){ const i=findIng(g.id); if(i){ i.used=0; fixed++; } }
+    else if(g.kind==='ing_unit'){ const i=findIng(g.id); if(i){ i.unit='ໜ່ວຍ'; fixed++; } }
+    else if(g.kind==='menu_recipe'){ const m=state.menu.find(x=>x.id===g.id); if(m){ m.recipe=(m.recipe||[]).filter(r=>findIng(r.ingredientId)); fixed++; } }
+    else if(g.kind==='menu_cat'){ const m=state.menu.find(x=>x.id===g.id); if(m){ m.category=state.menuCats[0].id; fixed++; } }
+    else if(g.kind==='menu_price'){ const m=state.menu.find(x=>x.id===g.id); if(m){ m.price=Math.max(0,m.price||0); fixed++; } }
+    else if(g.kind==='order_bad'){ state.orders=state.orders.filter(o=>o.id!==g.id); fixed++; }
+    else if(g.kind==='exp_cat'){ const e=state.expenses.find(x=>x.id===g.id); if(e){ e.category=state.expenseCats[state.expenseCats.length-1].id; fixed++; } }
+    else if(g.kind==='inc_cat'){ const i=state.incomes.find(x=>x.id===g.id); if(i){ i.category=state.incomeCats[state.incomeCats.length-1].id; fixed++; } }
+  });
+  if(fixed>0){ save(); refresh(); }
+  return fixed;
+}
+
+/* ---------- EXPORT / IMPORT / RECOVERY ---------- */
+function exportData(){
+  const bundle={_meta:{app:'pos',ver:3,exportedAt:new Date().toISOString(),device:SYNC.deviceId}};
+  SYNC_KEYS.forEach(k=>{ bundle[k]=DB.get(k,null); });
+  const blob=new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  const d=new Date();
+  a.href=url; a.download='pos-backup-'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'.json';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  toast('ດາວໂຫຼດໄຟລ໌ສຳຮອງແລ້ວ ✓');
+}
+function importDataFile(file){
+  const reader=new FileReader();
+  reader.onload=e=>{
+    try{
+      const bundle=JSON.parse(e.target.result);
+      if(!bundle||typeof bundle!=='object') throw new Error('ໄຟລ໌ບໍ່ຖືກຕ້ອງ');
+      let n=0;
+      SYNC_KEYS.forEach(k=>{ if(bundle[k]!==undefined && bundle[k]!==null){ DB.set(k,bundle[k]); n++; } });
+      SYNC._reloadLocalIntoState();
+      seedDefaults();
+      save();               // push ຂຶ້ນ cloud + ແທັບອື່ນ
+      closeModal(); refresh();
+      toast('ກູ້ຂໍ້ມູນສຳເລັດ ('+n+' ໝວດ) ✓');
+    }catch(err){ toast('ອິມພອດຜິດພາດ: '+(err.message||err),true); }
+  };
+  reader.onerror=()=>toast('ອ່ານໄຟລ໌ບໍ່ໄດ້',true);
+  reader.readAsText(file);
+}
+
+function refreshSoft(){ /* re-render ໜ້າປັດຈຸບັນ ໂດຍບໍ່ reset scroll ຖ້າເປັນໄປໄດ້ */ try{ refresh(); }catch(e){} }
+function updateSyncBadge(){
+  const el=$('syncBadge'); if(!el) return;
+  const map={local:['⚪','ເຄື່ອງດຽວ','#8899aa'],connecting:['🟡','ກຳລັງຕໍ່...','#E0A64C'],online:['🟢','ຊິ້ງ Cloud','#2FA8A0'],error:['🔴','ຜິດພາດ','#C1554F']};
+  const m=map[SYNC.status]||map.local;
+  el.innerHTML=`<span style="font-size:10px">${m[0]}</span> ${m[1]}`;
+  el.style.color=m[2];
+}
+
+/* ============================================================
+   HELPERS
+   ============================================================ */
+const $=id=>document.getElementById(id);
+function esc(s){return String(s==null?'':s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function fmt(n){return Math.round(n).toLocaleString('en-US');}
+function kip(n){return fmt(n)+' ກີບ';}
+function toast(msg,isErr){
+  const t=$('toast'); if(!t)return;
+  const icon=isErr?'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>':'<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  t.innerHTML=icon+'<span>'+msg+'</span>';
+  t.className='toast show'+(isErr?' err':'');
+  clearTimeout(t._to); t._to=setTimeout(()=>{t.className='toast'+(isErr?' err':'');},2400);
+}
+/* ★ ອ່ານຮູບ + ຫຍໍ້ຂະໜາດ + ບີບອັດ ກ່ອນເກັບ (FIX: ຮູບບໍ່ສະແດງ ຍ້ອນຟັງຊັນນີ້ຫາຍໄປ) */
+function processImage(file,maxDim,cb){
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const img=new Image();
+    img.onload=()=>{
+      let w=img.width,h=img.height;
+      if(w>h){ if(w>maxDim){ h=h*maxDim/w; w=maxDim; } }
+      else { if(h>maxDim){ w=w*maxDim/h; h=maxDim; } }
+      const canvas=document.createElement('canvas');
+      canvas.width=Math.round(w); canvas.height=Math.round(h);
+      const ctx=canvas.getContext('2d');
+      ctx.drawImage(img,0,0,canvas.width,canvas.height);
+      try{ cb(canvas.toDataURL('image/jpeg',0.82)); }
+      catch(err){ toast('ບໍ່ສາມາດແປງຮູບໄດ້',true); }
+    };
+    img.onerror=()=>toast('ບໍ່ສາມາດອ່ານຮູບໄດ້ ລອງຮູບອື່ນ',true);
+    img.src=e.target.result;
+  };
+  reader.onerror=()=>toast('ບໍ່ສາມາດອ່ານໄຟລ໌ໄດ້',true);
+  reader.readAsDataURL(file);
+}
+function todayKey(d){d=d||new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();}
+function weekStart(d){d=new Date(d);const day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);d.setHours(0,0,0,0);return d;}
+function sameWeek(a,b){return weekStart(a).getTime()===weekStart(b).getTime();}
+function inMonth(t,y,m){const d=new Date(t);return d.getFullYear()===y&&d.getMonth()===m;}
+function nextOrderNo(y,m){return state.orders.filter(o=>inMonth(o.time,y,m)).length+1;}
+function orderCode(o){const d=new Date(o.time);return EN_MONTHS[d.getMonth()]+'-'+String(o.no).padStart(3,'0');}
+function catInfo(id){return state.menuCats.find(c=>c.id===id)||state.menuCats[0];}
+function expCatInfo(id){return state.expenseCats.find(c=>c.id===id)||state.expenseCats[state.expenseCats.length-1];}
+function incCatInfo(id){return state.incomeCats.find(c=>c.id===id)||state.incomeCats[state.incomeCats.length-1];}
+
+/* ============================================================
+   ★ CALCULATION ENGINE (ຫົວໃຈຂອງລະບົບ)
+   ============================================================ */
+function findIng(id){return state.ingredients.find(i=>i.id===id);}
+
+// ຄ່າຕໍ່ 1 base-unit
+function costPerBase(ing){
+  if(!ing||!ing.qtyPerUnit)return 0;
+  return ing.purchaseCost/ing.qtyPerUnit;   // ລາຄາຕໍ່ຫົວໜ່ວຍ ÷ ປະລິມານຕໍ່ຫົວໜ່ວຍ
+}
+// ຕົ້ນທຶນວັດຖຸດິບຂອງ 1 ເມນູ (ຈາກ BOM)
+function materialCost(item){
+  return (item.recipe||[]).reduce((s,r)=>{
+    const ing=findIng(r.ingredientId);
+    return s + (r.amount||0)*costPerBase(ing);
+  },0);
+}
+function overheadPctOf(item){
+  return (item.overridePct!=null)?item.overridePct:(state.shop.overheadPct||0);
+}
+function overheadCost(item){ return materialCost(item)*overheadPctOf(item)/100; }
+function totalCost(item){ return materialCost(item)+overheadCost(item); }
+// ລາຄາຂາຍແນະນຳ (markup: ຕົ້ນທຶນ × (1+margin%))
+function suggestedPrice(item,marginPct){ return totalCost(item)*(1+marginPct/100); }
+// ຕັດສະຕ໋ອກ
+function deductStock(item,qty){
+  (item.recipe||[]).forEach(r=>{
+    const ing=findIng(r.ingredientId);
+    if(ing){
+      const amt=(r.amount||0)*qty;
+      const take=Math.min(amt, ing.stock);       // ຫັກໄດ້ຫຼາຍສຸດເທົ່າທີ່ເຫຼືອ
+      ing.stock=Math.max(0, ing.stock-amt);
+      ing.used=(ing.used||0)+take;               // ບັນທຶກ "ໃຊ້ແລ້ວ"
+    }
+  });
+}
+// ເຊັກວ່າສະຕ໋ອກພຽງພໍບໍ່ ສຳລັບ cart ປັດຈຸບັນ
+function stockShortages(){
+  const need={};
+  cartIds().forEach(id=>{
+    const item=state.menu.find(m=>m.id===id);
+    (item.recipe||[]).forEach(r=>{ need[r.ingredientId]=(need[r.ingredientId]||0)+(r.amount||0)*state.cart[id]; });
+  });
+  const short=[];
+  Object.keys(need).forEach(iid=>{
+    const ing=findIng(iid);
+    if(ing && need[iid]>ing.stock) short.push({ing, need:need[iid], have:ing.stock});
+  });
+  return short;
+}
+
+/* ============================================================
+   LOGIN
+   ============================================================ */
+function doLogin(){
+  const u=$('username').value.trim(), p=$('password').value, err=$('loginErr');
+  if(!u||!p){err.textContent='ກະລຸນາປ້ອນຊື່ ແລະ ລະຫັດຜ່ານ';return;}
+  if(p.length<4){err.textContent='ລະຫັດຜ່ານຕ້ອງຢ່າງໜ້ອຍ 4 ຕົວ';return;}
+  if(!state.user){ state.user={name:u,pass:p}; DB.set('user',state.user); enterApp(); }
+  else{ if(state.user.name===u&&state.user.pass===p) enterApp(); else err.textContent='ຊື່ ຫຼື ລະຫັດຜ່ານບໍ່ຖືກຕ້ອງ'; }
+}
+function enterApp(){
+  $('loginScreen').classList.add('hidden'); $('app').classList.remove('hidden');
+  $('loginErr').textContent=''; $('username').value=''; $('password').value='';
+  DB.set('session',true); seedDefaults(); nav('sell');
+}
+function logout(){ DB.set('session',false); $('app').classList.add('hidden'); $('loginScreen').classList.remove('hidden'); state.cart={}; }
+window.addEventListener('load',()=>{ seedDefaults(); SYNC.init(); if(state.user&&DB.get('session',false)) enterApp(); });
+
+/* ============================================================
+   NAV
+   ============================================================ */
+let currentPage='sell';
+function nav(page){
+  currentPage=page;
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.toggle('active',n.dataset.page===page));
+  const m=$('mainContent'); m.scrollTop=0;
+  if(page==='sell')m.innerHTML=renderSell();
+  else if(page==='finance')m.innerHTML=renderFinance();
+  else if(page==='stats')m.innerHTML=renderStats();
+  else if(page==='stock')m.innerHTML=renderStock();
+  else if(page==='menu')m.innerHTML=renderMenu();
+  updateTopbar();
+}
+function refresh(){ nav(currentPage); }
+function updateTopbar(){
+  $('topName').textContent=state.shop.name;
+  const low=state.ingredients.filter(i=>i.stock<=i.lowAt).length;
+  $('topSub').textContent=low>0?('⚠️ '+low+' ວັດຖຸດິບໃກ້ໝົດ'):'ພ້ອມຂາຍ';
+  if(state.shop.logo)$('topLogo').innerHTML=`<img src="${state.shop.logo}" alt="">`;
+  updateSyncBadge();
+}
+
+/* ============================================================
+   PAGE: SELL (category tabs, vertical photos, auto-deduct)
+   ============================================================ */
+const CHANNELS={walkin:'Walk-in',panda:'Food Panda'};
+const PAYMENTS={cash:'ເງິນສົດ',transfer:'ເງິນໂອນ',pandapay:'Food Panda'};
+
+function renderSell(){
+  // category tabs (only cats that have items + "all")
+  const usedCats=[...new Set(state.menu.map(m=>m.category||'drink'))];
+  let tabs=`<button class="cat-tab ${state.sellCat==='all'?'on':''}" onclick="setSellCat('all')"><span class="cc">🗂️</span>ທັງໝົດ</button>`;
+  state.menuCats.forEach(c=>{
+    if(usedCats.includes(c.id))
+      tabs+=`<button class="cat-tab ${state.sellCat===c.id?'on':''}" onclick="setSellCat('${c.id}')"><span class="cc">${c.emoji}</span>${c.name}</button>`;
+  });
+
+  const shown = state.sellCat==='all' ? state.menu : state.menu.filter(m=>(m.category||'drink')===state.sellCat);
+  let tiles='';
+  const minSlots = state.sellCat==='all'?10:0;
+  const count=Math.max(minSlots, shown.length);
+  for(let i=0;i<count;i++){
+    const item=shown[i];
+    if(item){
+      const q=state.cart[item.id]||0;
+      const photo=item.img?`<img src="${item.img}" alt="">`:`<span class="ph-emoji">${item.emoji}</span>`;
+      tiles+=`<button class="drink-tile ${q>0?'picked':''}" id="tile-${item.id}" onclick="addToCart('${item.id}')">
+        <span class="qbadge" id="badge-${item.id}" ${q>0?'':'style="display:none"'}>${q}</span>
+        <div class="photo">${photo}</div>
+        <div class="body"><div class="nm">${esc(item.name)}</div><div class="pr">${fmt(item.price)} ກີບ</div></div>
+      </button>`;
+    }else{
+      tiles+=`<button class="drink-tile empty-slot" onclick="nav('menu')"><div class="es-i">➕</div><div class="es-n">ເພີ່ມເມນູ</div></button>`;
+    }
+  }
+  if(shown.length===0 && minSlots===0){
+    tiles=`<div style="grid-column:1/-1"><div class="empty-state" style="padding:30px"><span class="es-em">${catInfo(state.sellCat).emoji}</span><div class="es-t">ຍັງບໍ່ມີເມນູໃນປະເພດນີ້</div><div class="es-s">ໄປທີ່ແທັບ "ເມນູ" ເພື່ອເພີ່ມ</div></div></div>`;
+  }
+
+  return `<div class="page pos-wrap">
+    <div class="sec-head"><h2>ໜ້າຂາຍ</h2><p>ແຕະຮູບເມນູ ແລ້ວກົດຢືນຢັນ</p></div>
+    <div class="cat-tabs">${tabs}</div>
+    <div class="menu-grid">${tiles}</div>
+    <div class="cart-summary">
+      <div class="card-title"><span class="dot"></span>ກະຕ່າ</div>
+      <div id="cartBody">${renderCartBody()}</div>
+      <div class="opt-label">ຊ່ອງທາງລູກຄ້າ</div>
+      <div class="opt-row" id="channelRow">
+        <button class="opt-btn ${state.channel==='walkin'?'on':''}" data-ch="walkin" onclick="setChannel('walkin')">🚶 Walk-in</button>
+        <button class="opt-btn ${state.channel==='panda'?'on':''}" data-ch="panda" onclick="setChannel('panda')">🛵 Food Panda</button>
+      </div>
+      <div class="opt-label">ວິທີຊຳລະ</div>
+      <div class="opt-row" id="paymentRow">
+        <button class="opt-btn ${state.payment==='cash'?'on':''}" data-pay="cash" onclick="setPayment('cash')">💵 ສົດ</button>
+        <button class="opt-btn ${state.payment==='transfer'?'on':''}" data-pay="transfer" onclick="setPayment('transfer')">🏦 ໂອນ</button>
+        <button class="opt-btn ${state.payment==='pandapay'?'on':''}" data-pay="pandapay" onclick="setPayment('pandapay')">🛵 Panda</button>
+      </div>
+      <div class="total-row"><span class="tl">ລວມທັງໝົດ</span><span class="tv" id="cartTotal">${kip(cartTotal())}</span></div>
+      <button class="checkout-btn" id="checkoutBtn" ${cartCount()===0?'disabled':''} onclick="checkout()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+        ຢືນຢັນການຂາຍ
+      </button>
+    </div>
+  </div>`;
+}
+function setSellCat(c){ state.sellCat=c; refresh(); }
+
+function cartIds(){return Object.keys(state.cart).filter(id=>state.cart[id]>0);}
+function cartCount(){return cartIds().length;}
+function cartTotal(){return cartIds().reduce((s,id)=>{const m=state.menu.find(x=>x.id===id);return s+(m?m.price*state.cart[id]:0);},0);}
+function renderCartBody(){
+  const ids=cartIds();
+  if(ids.length===0)return `<div class="cart-empty"><span class="em">🛒</span>ຍັງບໍ່ມີລາຍການ<br>ແຕະຮູບເມນູຂ້າງເທິງເພື່ອເລີ່ມຂາຍ</div>`;
+  return ids.map(id=>{
+    const item=state.menu.find(m=>m.id===id); const q=state.cart[id]; const sub=item.price*q;
+    const pic=item.img?`<img class="cimg" src="${item.img}" alt="">`:`<span class="cem">${item.emoji}</span>`;
+    return `<div class="cart-line" id="cline-${id}">
+      <div class="ci"><div class="cn">${pic} ${esc(item.name)}</div><div class="cd">${fmt(item.price)} × ${q} = ${kip(sub)}</div></div>
+      <div class="qty-ctrl"><button class="qbtn minus" onclick="changeQty('${id}',-1)">−</button><span class="qnum">${q}</span><button class="qbtn" onclick="changeQty('${id}',1)">+</button></div>
+    </div>`;
+  }).join('');
+}
+function updateTileBadge(id){
+  const q=state.cart[id]||0, badge=$('badge-'+id), tile=$('tile-'+id);
+  if(badge){ if(q>0){badge.textContent=q;badge.style.display='';}else badge.style.display='none'; }
+  if(tile)tile.classList.toggle('picked',q>0);
+}
+function updateCartArea(){
+  const body=$('cartBody'); if(body)body.innerHTML=renderCartBody();
+  const tot=$('cartTotal'); if(tot)tot.textContent=kip(cartTotal());
+  const btn=$('checkoutBtn'); if(btn)btn.disabled=cartCount()===0;
+}
+function addToCart(id){ state.cart[id]=(state.cart[id]||0)+1; updateTileBadge(id); updateCartArea(); }
+function changeQty(id,d){ state.cart[id]=(state.cart[id]||0)+d; if(state.cart[id]<=0)delete state.cart[id]; updateTileBadge(id); updateCartArea(); }
+function setChannel(c){ state.channel=c; if(c==='panda')state.payment='pandapay'; else if(state.payment==='pandapay')state.payment='cash'; syncOpt(); }
+function setPayment(p){ state.payment=p; syncOpt(); }
+function syncOpt(){
+  document.querySelectorAll('#channelRow .opt-btn').forEach(b=>b.classList.toggle('on',b.dataset.ch===state.channel));
+  document.querySelectorAll('#paymentRow .opt-btn').forEach(b=>b.classList.toggle('on',b.dataset.pay===state.payment));
+}
+
+function checkout(){
+  const ids=cartIds(); if(ids.length===0)return;
+  // ເຊັກສະຕ໋ອກກ່ອນ
+  const short=stockShortages();
+  if(short.length>0){
+    const list=short.map(s=>`${s.ing.emoji} ${esc(s.ing.name)} (ຕ້ອງ ${fmt(s.need)}, ເຫຼືອ ${fmt(s.have)} ${s.ing.baseUnit})`).join('<br>');
+    const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+      <div class="modal-grip"></div><h3>⚠️ ວັດຖຸດິບບໍ່ພຽງພໍ</h3>
+      <p class="msub">ສະຕ໋ອກບໍ່ພໍສຳລັບອໍເດີ້ນີ້:</p>
+      <div style="background:#FCE9E9;border-radius:12px;padding:14px;font-size:13px;font-weight:600;color:#96552F;line-height:1.7">${list}</div>
+      <p class="msub" style="margin-top:14px">ຈະຂາຍຕໍ່ບໍ່? (ສະຕ໋ອກຈະຕິດລົບ/ເປັນ 0)</p>
+      <button class="btn-save" onclick="doCheckout()">ຂາຍຕໍ່</button>
+      <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ ໄປເຕີມສະຕ໋ອກ</button>
+    </div></div>`;
+    $('modalRoot').innerHTML=html; return;
+  }
+  doCheckout();
+}
+function doCheckout(){
+  closeModal();
+  const ids=cartIds(); if(ids.length===0)return;
+  const items=ids.map(id=>{
+    const m=state.menu.find(x=>x.id===id);
+    return {id,name:m.name,emoji:m.emoji,img:m.img||null,price:m.price,cost:Math.round(totalCost(m)),qty:state.cart[id],recipe:(m.recipe||[]).map(r=>({...r}))};
+  });
+  const total=items.reduce((s,i)=>s+i.price*i.qty,0);
+  const totalCostSum=items.reduce((s,i)=>s+i.cost*i.qty,0);
+  // ຕັດສະຕ໋ອກອັດຕະໂນມັດ
+  items.forEach(it=>{ const m=state.menu.find(x=>x.id===it.id); deductStock(m,it.qty); });
+  const now=new Date(); const no=nextOrderNo(now.getFullYear(),now.getMonth());
+  const order={id:'o'+Date.now(),no,time:now.toISOString(),items,total,cost:totalCostSum,profit:total-totalCostSum,channel:state.channel,payment:state.payment};
+  state.orders.unshift(order);
+  save(); state.cart={};
+  showReceipt(order);
+  toast('ຂາຍ '+orderCode(order)+' ສຳເລັດ · ຕັດສະຕ໋ອກແລ້ວ');
+  refresh();
+}
+
+/* ============================================================
+   RECEIPT (preview + 75mm print)
+   ============================================================ */
+function shopAddressLines(){
+  const s=state.shop, parts=[];
+  if(s.road)parts.push(s.road);
+  const vdp=[s.village,s.district,s.province].filter(Boolean).join(', ');
+  if(vdp)parts.push(vdp);
+  return parts;
+}
+function showReceipt(order){
+  const d=new Date(order.time);
+  const dateStr=d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  let rows=''; order.items.forEach(i=>{ rows+=`<div class="receipt-row"><span class="rq">${i.emoji} ${esc(i.name)} ×${i.qty}</span><span>${kip(i.price*i.qty)}</span></div>`; });
+  const chanChip=order.channel==='walkin'?'<span class="chip walkin">🚶 Walk-in</span>':'<span class="chip panda">🛵 Food Panda</span>';
+  const payChip={cash:'<span class="chip cash">💵 ເງິນສົດ</span>',transfer:'<span class="chip transfer">🏦 ເງິນໂອນ</span>',pandapay:'<span class="chip pandapay">🛵 Panda</span>'}[order.payment];
+  const logoHtml=state.shop.logo?`<img src="${state.shop.logo}" alt="">`:'🥤';
+  const addr=shopAddressLines();
+  const addrHtml=addr.length?`<div class="raddr">${addr.map(esc).join('<br>')}</div>`:'';
+  const extraHtml=state.shop.extra?`<div class="raddr">${esc(state.shop.extra)}</div>`:'';
+  const qrHtml=state.shop.qr?`<div style="text-align:center;margin-top:12px;border-top:2px dashed var(--line);padding-top:12px"><div style="font-size:11px;color:var(--ink-soft);font-weight:600;margin-bottom:6px">ສະແກນ QR ເພື່ອໂອນຈ່າຍ</div><img src="${state.shop.qr}" style="width:110px;height:110px;object-fit:contain;border-radius:8px"></div>`:'';
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ໃບບິນ</h3>
+    <p class="msub">ໃບບິນຂະໜາດ A6 · ດາວໂຫຼດ ຫຼື ພິມໃຫ້ລູກຄ້າ</p>
+    <div class="receipt">
+      <div class="receipt-head"><div class="rlogo">${logoHtml}</div><div class="rname">${esc(state.shop.name)}</div>${addrHtml}${extraHtml}<div class="rid">ເລກທີ ${orderCode(order)}</div><div class="rdate">${dateStr}</div></div>
+      ${rows}
+      <div class="receipt-total"><span>ລວມ</span><span>${kip(order.total)}</span></div>
+      <div class="receipt-meta">${chanChip}${payChip}</div>
+      ${qrHtml}
+      <div class="receipt-foot">ຂອບໃຈທີ່ອຸດໜູນ 🙏<br>ໂຊກດີ ດື່ມແຊບໆ</div>
+    </div>
+    <button class="btn-save" onclick="printReceipt('${order.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>ພິມ / ບັນທຶກ PDF (A6)</button>
+    <button class="btn-ghost" style="color:var(--danger-deep)" onclick="voidOrder('${order.id}')">🗑️ ຍົກເລີກບິນນີ້ (ຄືນສະຕ໋ອກ)</button>
+    <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function voidOrder(orderId){
+  const order=state.orders.find(o=>o.id===orderId); if(!order)return;
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ຍົກເລີກບິນ ${orderCode(order)}?</h3>
+    <p class="msub">ບິນນີ້ຈະຖືກລຶບອອກຈາກປະຫວັດ ແລະ ວັດຖຸດິບທີ່ຕັດໄປຈະຖືກຄືນເຂົ້າສາງ. ຢືນຢັນບໍ່?</p>
+    <button class="btn-save" style="background:linear-gradient(135deg,#E57373,#C1554F)" onclick="confirmVoidOrder('${orderId}')">ຍົກເລີກບິນ ແລະ ຄືນສະຕ໋ອກ</button>
+    <button class="btn-ghost" onclick="showReceipt(state.orders.find(x=>x.id==='${orderId}'))">ກັບຄືນ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function confirmVoidOrder(orderId){
+  const order=state.orders.find(o=>o.id===orderId); if(!order)return;
+  // ຄືນສະຕ໋ອກ: ບວກກັບຄືນ ແລະ ຫັກ used
+  order.items.forEach(it=>{
+    (it.recipe||[]).forEach(r=>{
+      const ing=findIng(r.ingredientId);
+      if(ing){
+        const amt=(r.amount||0)*it.qty;
+        ing.stock+=amt;
+        ing.used=Math.max(0,(ing.used||0)-amt);
+      }
+    });
+  });
+  state.orders=state.orders.filter(o=>o.id!==orderId);
+  save(); closeModal(); refresh(); toast('ຍົກເລີກບິນ '+orderCode(order)+' ແລ້ວ · ຄືນສະຕ໋ອກແລ້ວ');
+}
+function closeModal(){ $('modalRoot').innerHTML=''; }
+function printReceipt(orderId){
+  const order=state.orders.find(o=>o.id===orderId); if(!order)return;
+  const d=new Date(order.time);
+  const dateStr=d.getDate()+'/'+(d.getMonth()+1)+'/'+d.getFullYear()+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+  let rows=''; order.items.forEach(i=>{ rows+=`<tr><td class="ln">${i.emoji} ${esc(i.name)} ×${i.qty}</td><td class="qt">${i.qty}</td><td class="rt">${fmt(i.price*i.qty)}</td></tr>`; });
+  const chan=order.channel==='walkin'?'🚶 Walk-in':'🛵 Food Panda';
+  const pay={cash:'💵 ເງິນສົດ',transfer:'🏦 ເງິນໂອນ',pandapay:'🛵 Food Panda'}[order.payment];
+  const logoHtml=state.shop.logo?`<img class="logo" src="${state.shop.logo}" alt="">`:'<div class="logo-em">🥤</div>';
+  const addr=shopAddressLines();
+  const addrHtml=addr.length?`<div class="addr">${addr.map(esc).join('<br>')}</div>`:'';
+  const extraHtml=state.shop.extra?`<div class="addr">${esc(state.shop.extra)}</div>`:'';
+  const qrBlock=state.shop.qr?`<div class="qr"><div class="qr-l">ສະແກນ QR ເພື່ອໂອນຈ່າຍ</div><img class="qr-img" src="${state.shop.qr}" alt="QR"></div>`:'';
+  const doc=`<!DOCTYPE html><html lang="lo"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ໃບບິນ ${orderCode(order)}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    @page{size:A6;margin:0}
+    *{margin:0;padding:0;box-sizing:border-box;font-family:'Noto Sans Lao',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    html,body{background:#f0f0f0}
+    .wrap{width:105mm;min-height:148mm;margin:0 auto;background:#fff;padding:8mm 7mm}
+    .head{text-align:center;padding-bottom:4mm;border-bottom:1.5px dashed #444;margin-bottom:4mm}
+    .logo{width:20mm;height:20mm;object-fit:cover;border-radius:3mm;margin:0 auto 2mm;display:block}
+    .logo-em{font-size:16mm;line-height:1}
+    .name{font-size:6mm;font-weight:800;color:#000}
+    .addr{font-size:3.2mm;color:#333;margin-top:1.5mm;line-height:1.5}
+    .id{font-size:4.5mm;font-weight:700;margin-top:3mm;letter-spacing:.3px;color:#1E7A74}
+    .dt{font-size:3.2mm;color:#444;margin-top:1mm}
+    table{width:100%;border-collapse:collapse;margin-top:2mm}
+    thead td{font-size:3mm;font-weight:700;color:#666;border-bottom:1px solid #ccc;padding-bottom:1.5mm}
+    tbody td{padding:1.8mm 0;font-size:3.6mm;color:#000;vertical-align:top;border-bottom:1px dotted #ddd}
+    td.ln{padding-right:2mm}
+    td.qt{text-align:center;width:12mm;white-space:nowrap}
+    td.rt{text-align:right;white-space:nowrap;font-weight:600;width:24mm}
+    thead td.qt{text-align:center}thead td.rt{text-align:right}
+    .tot{display:flex;justify-content:space-between;border-top:1.5px dashed #444;margin-top:3mm;padding-top:3mm;font-size:5.5mm;font-weight:800}
+    .kip{font-size:3.5mm;font-weight:600;margin-left:1.5mm}
+    .meta{text-align:center;margin-top:3mm;font-size:3.6mm;color:#222}
+    .qr{text-align:center;margin-top:4mm;padding-top:3mm;border-top:1.5px dashed #444}
+    .qr-l{font-size:3.2mm;color:#444;font-weight:600;margin-bottom:2mm}
+    .qr-img{width:34mm;height:34mm;object-fit:contain}
+    .foot{text-align:center;font-size:3.2mm;color:#555;margin-top:4mm;padding-top:3mm;border-top:1.5px dashed #444;line-height:1.6}
+    .pbtn{display:block;width:105mm;margin:5mm auto;padding:4mm;border:none;border-radius:2mm;background:#2FA8A0;color:#fff;font-size:4mm;font-weight:700;cursor:pointer;font-family:'Noto Sans Lao',sans-serif}
+    @media print{.pbtn{display:none}html,body{background:#fff}}
+  </style></head><body>
+  <div class="wrap">
+    <div class="head">${logoHtml}<div class="name">${esc(state.shop.name)}</div>${addrHtml}${extraHtml}<div class="id">ເລກທີ ${orderCode(order)}</div><div class="dt">${dateStr}</div></div>
+    <table><thead><tr><td class="ln">ລາຍການ</td><td class="qt">ຈຳນວນ</td><td class="rt">ລາຄາ</td></tr></thead><tbody>${rows}</tbody></table>
+    <div class="tot"><span>ລວມ</span><span>${fmt(order.total)}<span class="kip">ກີບ</span></span></div>
+    <div class="meta">${chan} · ${pay}</div>
+    ${qrBlock}
+    <div class="foot">ຂອບໃຈທີ່ອຸດໜູນ 🙏<br>ໂຊກດີ ດື່ມແຊບໆ</div>
+  </div>
+  <button class="pbtn" onclick="window.print()">🖨️ ພິມ / ບັນທຶກ PDF (A6)</button>
+  <script>setTimeout(function(){window.print()},700);<\/script></body></html>`;
+  const w=window.open('','_blank');
+  if(w){w.document.write(doc);w.document.close();}else toast('ກະລຸນາອະນຸຍາດ pop-up ເພື່ອພິມ',true);
+}
+
+/* ============================================================
+   PAGE: FINANCE (ຜົນປະກອບການ + ຮັບ-ຈ່າຍ ລະອຽດ)
+   ============================================================ */
+let financeTab='summary';  // summary | ledger
+function financeData(y,mo){
+  const orders=state.orders.filter(o=>inMonth(o.time,y,mo));
+  const expenses=state.expenses.filter(e=>inMonth(e.date,y,mo));
+  const incomes=state.incomes.filter(i=>inMonth(i.date,y,mo));
+  const saleIncome=orders.reduce((s,o)=>s+o.total,0);
+  const otherIncome=incomes.reduce((s,i)=>s+i.amount,0);
+  const totalIncome=saleIncome+otherIncome;
+  const incCost=orders.reduce((s,o)=>s+o.cost,0);
+  const expTotal=expenses.reduce((s,e)=>s+e.amount,0);
+  const netProfit=totalIncome-expTotal;
+  return {orders,expenses,incomes,saleIncome,otherIncome,totalIncome,incCost,expTotal,netProfit};
+}
+
+function renderFinance(){
+  const y=state.viewYear, mo=state.viewMonth;
+  const D=financeData(y,mo);
+
+  // ແຍກຮັບຕາມ payment (ຈາກການຂາຍ + ລາຍຮັບອື່ນ)
+  const inBy={cash:0,transfer:0,pandapay:0};
+  D.orders.forEach(o=>inBy[o.payment]=(inBy[o.payment]||0)+o.total);
+  D.incomes.forEach(i=>inBy[i.method]=(inBy[i.method]||0)+i.amount);
+  const outBy={cash:0,transfer:0};
+  D.expenses.forEach(e=>outBy[e.method]=(outBy[e.method]||0)+e.amount);
+  // ແຍກຕາມປະເພດ
+  const outCat={}; D.expenses.forEach(e=>outCat[e.category]=(outCat[e.category]||0)+e.amount);
+  const inCat={}; D.incomes.forEach(i=>inCat[i.category]=(inCat[i.category]||0)+i.amount);
+
+  let body='';
+  if(financeTab==='summary'){
+    // ລາຍລະອຽດລາຍຮັບ: ການຂາຍ + ແຍກແຕ່ລະປະເພດລາຍຮັບອື່ນ
+    let incomeDetailRows=`<div class="cp-row"><span class="cp-l">🛒 ຂາຍໜ້າຮ້ານ (${D.orders.length} ບິນ)</span><span class="cp-v pos-margin">+${kip(D.saleIncome)}</span></div>`;
+    state.incomeCats.forEach(c=>{ const v=inCat[c.id]||0; if(v>0) incomeDetailRows+=`<div class="cp-row"><span class="cp-l">${c.emoji} ${esc(c.name)}</span><span class="cp-v pos-margin">+${kip(v)}</span></div>`; });
+
+    // ລາຍລະອຽດລາຍຈ່າຍ: ແຍກແຕ່ລະປະເພດ
+    let expenseDetailRows='';
+    state.expenseCats.forEach(c=>{ const v=outCat[c.id]||0; if(v>0) expenseDetailRows+=`<div class="cp-row"><span class="cp-l">${c.emoji} ${esc(c.name)}</span><span class="cp-v" style="color:var(--expense)">−${kip(v)}</span></div>`; });
+    if(!expenseDetailRows) expenseDetailRows=`<div class="cp-row"><span class="cp-l" style="color:var(--ink-soft)">ຍັງບໍ່ມີລາຍຈ່າຍ</span><span class="cp-v">0</span></div>`;
+
+    body=`
+    <div class="stat-grid">
+      <div class="stat mint"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#0E5551" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="lbl">ລາຍຮັບລວມ</div><div class="val">${fmt(D.totalIncome)} <small>ກີບ</small></div></div>
+      <div class="stat peach"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#B5651D" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div><div class="lbl">ລາຍຈ່າຍລວມ</div><div class="val">${fmt(D.expTotal)} <small>ກີບ</small></div></div>
+      <div class="stat ${D.netProfit>=0?'lav':'pink'}"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#5B4B9A" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="lbl">ກຳໄລສຸດທິ</div><div class="val">${fmt(D.netProfit)} <small>ກີບ</small></div></div>
+      <div class="stat sky"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2C6E8F" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="lbl">ຈຳນວນບິນຂາຍ</div><div class="val">${D.orders.length}</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>💰 ລາຍຮັບ ແຍກລະອຽດ</div>
+      <div class="calc-preview" style="margin-top:0">
+        ${incomeDetailRows}
+        <div class="cp-row big"><span class="cp-l">ລວມລາຍຮັບ</span><span class="cp-v pos-margin">+${kip(D.totalIncome)}</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>💸 ລາຍຈ່າຍ ແຍກລະອຽດ</div>
+      <div class="calc-preview" style="margin-top:0">
+        ${expenseDetailRows}
+        <div class="cp-row big"><span class="cp-l">ລວມລາຍຈ່າຍ</span><span class="cp-v" style="color:var(--expense)">−${kip(D.expTotal)}</span></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>ແຍກຕາມການຮັບ-ຈ່າຍເງິນ</div>
+      <div class="opt-label" style="margin-top:0">ຮັບເງິນ</div>
+      <div class="pay-break">
+        <div class="pb cash"><div class="pbl">💵 ສົດ</div><div class="pbv">${fmt(inBy.cash)}</div></div>
+        <div class="pb transfer"><div class="pbl">🏦 ໂອນ</div><div class="pbv">${fmt(inBy.transfer)}</div></div>
+        <div class="pb pandapay"><div class="pbl">🛵 Panda</div><div class="pbv">${fmt(inBy.pandapay)}</div></div>
+      </div>
+      <div class="opt-label">ຈ່າຍເງິນ</div>
+      <div class="pay-break" style="grid-template-columns:1fr 1fr">
+        <div class="pb cash"><div class="pbl">💵 ຈ່າຍສົດ</div><div class="pbv">${fmt(outBy.cash)}</div></div>
+        <div class="pb transfer"><div class="pbl">🏦 ຈ່າຍໂອນ</div><div class="pbv">${fmt(outBy.transfer)}</div></div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📈 ສະຫຼຸບຜົນປະກອບການ</div>
+      <div class="calc-preview" style="margin-top:0">
+        <div class="cp-row"><span class="cp-l">ລາຍຮັບທັງໝົດ</span><span class="cp-v pos-margin">+${kip(D.totalIncome)}</span></div>
+        <div class="cp-row"><span class="cp-l">ຕົ້ນທຶນວັດຖຸດິບ (ຈາກສູດ)</span><span class="cp-v" style="color:var(--expense)">−${kip(D.incCost)}</span></div>
+        <div class="cp-row sub"><span class="cp-l">ກຳໄລຂັ້ນຕົ້ນ (ຫຼັງຫັກຕົ້ນທຶນ)</span><span class="cp-v">${kip(D.totalIncome-D.incCost)}</span></div>
+        <div class="cp-row"><span class="cp-l">ລາຍຈ່າຍທັງໝົດ (ບັນທຶກຈິງ)</span><span class="cp-v" style="color:var(--expense)">−${kip(D.expTotal)}</span></div>
+        <div class="cp-row big"><span class="cp-l">ກຳໄລສຸດທິ</span><span class="cp-v ${D.netProfit>=0?'pos-margin':''}" ${D.netProfit<0?'style="color:var(--danger-deep)"':''}>${kip(D.netProfit)}</span></div>
+      </div>
+      <div class="tiny-note">ກຳໄລສຸດທິ = ລາຍຮັບທັງໝົດ − ລາຍຈ່າຍທີ່ບັນທຶກຈິງ (ຄ່າວັດຖຸດິບ ຄ່ານ້ຳ ຄ່າໄຟ ຄ່າແຮງ ແລະ ອື່ນໆ)</div>
+    </div>`;
+  } else {
+    body=renderLedger(D.orders, D.expenses, D.incomes);
+  }
+
+  return `<div class="page">
+    <div class="sec-head"><h2>ຮັບ-ຈ່າຍ / ຜົນປະກອບການ</h2><p>ຕິດຕາມເງິນເຂົ້າ-ອອກ ແຕ່ລະເດືອນ</p></div>
+    ${monthNav()}
+    <button class="btn-ghost" style="margin:0 0 14px;background:var(--pastel-lav);color:#5B4B9A" onclick="printMonthlyReport()">🖨️ ພິມລີພອດເດືອນ ${LAO_MONTHS[mo]} (ຮັບ-ຈ່າຍ + ສະຖິຕິ + ສາງ)</button>
+    <div class="seg">
+      <button class="${financeTab==='summary'?'on':''}" onclick="setFinanceTab('summary')">📊 ສະຫຼຸບ</button>
+      <button class="${financeTab==='ledger'?'on':''}" onclick="setFinanceTab('ledger')">📒 ຮັບ-ຈ່າຍລາຍວັນ</button>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:14px">
+      <button class="add-btn-row" style="margin:0;border-color:var(--income);color:var(--teal-deep)" onclick="addIncome()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>ລາຍຮັບ</button>
+      <button class="add-btn-row" style="margin:0;border-color:var(--expense);color:var(--expense)" onclick="addExpense()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>ລາຍຈ່າຍ</button>
+    </div>
+    ${body}
+  </div>`;
+}
+function setFinanceTab(t){ financeTab=t; refresh(); }
+
+/* ============================================================
+   ພິມລີພອດປະຈຳເດືອນ (A4) — ຮັບ-ຈ່າຍ + ສະຖິຕິ + ສາງ
+   ============================================================ */
+function printMonthlyReport(){
+  const y=state.viewYear, mo=state.viewMonth;
+  const D=financeData(y,mo);
+  const monthLabel=LAO_MONTHS[mo]+' '+y;
+
+  // -- ສ່ວນ 1: ຮັບ-ຈ່າຍ --
+  const inBy={cash:0,transfer:0,pandapay:0};
+  D.orders.forEach(o=>inBy[o.payment]=(inBy[o.payment]||0)+o.total);
+  D.incomes.forEach(i=>inBy[i.method]=(inBy[i.method]||0)+i.amount);
+  const outBy={cash:0,transfer:0};
+  D.expenses.forEach(e=>outBy[e.method]=(outBy[e.method]||0)+e.amount);
+  const outCat={}; D.expenses.forEach(e=>outCat[e.category]=(outCat[e.category]||0)+e.amount);
+  const inCat={}; D.incomes.forEach(i=>inCat[i.category]=(inCat[i.category]||0)+i.amount);
+
+  let incomeRows=`<tr><td>🛒 ຂາຍໜ້າຮ້ານ (${D.orders.length} ບິນ)</td><td class="r">${fmt(D.saleIncome)}</td></tr>`;
+  state.incomeCats.forEach(c=>{ const v=inCat[c.id]||0; if(v>0) incomeRows+=`<tr><td>${c.emoji} ${esc(c.name)}</td><td class="r">${fmt(v)}</td></tr>`; });
+  let expenseRows='';
+  state.expenseCats.forEach(c=>{ const v=outCat[c.id]||0; if(v>0) expenseRows+=`<tr><td>${c.emoji} ${esc(c.name)}</td><td class="r">${fmt(v)}</td></tr>`; });
+  if(!expenseRows) expenseRows=`<tr><td colspan="2" style="color:#999">ບໍ່ມີລາຍຈ່າຍ</td></tr>`;
+
+  // -- ສ່ວນ 2: ສະຖິຕິການຂາຍ (ຕໍ່ເຄື່ອງດື່ມ) --
+  const per={};
+  D.orders.forEach(o=>o.items.forEach(i=>{
+    if(!per[i.id])per[i.id]={name:i.name,emoji:i.emoji,qty:0,rev:0,cost:0};
+    per[i.id].qty+=i.qty; per[i.id].rev+=i.price*i.qty; per[i.id].cost+=(i.cost||0)*i.qty;
+  }));
+  const ranked=Object.values(per).sort((a,b)=>b.qty-a.qty);
+  const cups=ranked.reduce((s,r)=>s+r.qty,0);
+  let statRows=ranked.map((r,idx)=>{
+    const medal=idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':(idx+1)+'.';
+    return `<tr><td>${medal} ${r.emoji} ${esc(r.name)}</td><td class="r">${fmt(r.qty)}</td><td class="r">${fmt(r.rev)}</td><td class="r">${fmt(r.cost)}</td><td class="r pos">${fmt(r.rev-r.cost)}</td></tr>`;
+  }).join('');
+  if(!statRows) statRows=`<tr><td colspan="5" style="color:#999">ບໍ່ມີການຂາຍ</td></tr>`;
+
+  // -- ສ່ວນ 3: ສາງ (ຍອດຄົງເຫຼືອ ວັນທີພິມ) --
+  let stockRows=state.ingredients.map(i=>{
+    const totalBase=i.stock+(i.used||0);
+    const status=i.stock<=0?'ໝົດ':i.stock<=i.lowAt?'ໃກ້ໝົດ':'ພຽງພໍ';
+    const stockValue=i.stock*costPerBase(i);
+    return `<tr><td>${i.emoji} ${esc(i.name)}</td><td class="r">${fmt(totalBase)} ${esc(i.baseUnit)}</td><td class="r">${fmt(i.used||0)}</td><td class="r">${fmt(i.stock)}</td><td class="r">${fmt(stockValue)}</td><td class="c">${status}</td></tr>`;
+  }).join('');
+  const stockTotalValue=state.ingredients.reduce((s,i)=>s+i.stock*costPerBase(i),0);
+
+  const logoHtml=state.shop.logo?`<img class="rlogo" src="${state.shop.logo}">`:'';
+  const addr=shopAddressLines();
+  const addrHtml=addr.length?`<div class="raddr">${addr.map(esc).join(' · ')}</div>`:'';
+  const printDate=new Date();
+  const printStr=printDate.getDate()+'/'+(printDate.getMonth()+1)+'/'+printDate.getFullYear()+' '+String(printDate.getHours()).padStart(2,'0')+':'+String(printDate.getMinutes()).padStart(2,'0');
+
+  const doc=`<!DOCTYPE html><html lang="lo"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>ລີພອດ ${monthLabel}</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Lao:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    @page{size:A4;margin:12mm}
+    *{margin:0;padding:0;box-sizing:border-box;font-family:'Noto Sans Lao',sans-serif;-webkit-print-color-adjust:exact;print-color-adjust:exact}
+    body{background:#eee;color:#1a1a1a}
+    .page{width:210mm;min-height:297mm;margin:0 auto;background:#fff;padding:14mm 12mm}
+    .rhead{display:flex;align-items:center;gap:12px;border-bottom:3px solid #2FA8A0;padding-bottom:10px;margin-bottom:6px}
+    .rlogo{width:56px;height:56px;object-fit:cover;border-radius:10px}
+    .rhead .ht{flex:1}
+    .rhead .rname{font-size:22px;font-weight:800}
+    .raddr{font-size:12px;color:#555;margin-top:3px}
+    .rtitle{font-size:16px;font-weight:800;color:#1E7A74;text-align:right}
+    .rtitle small{display:block;font-size:11px;color:#888;font-weight:500;margin-top:2px}
+    .sec{margin-top:22px}
+    .sec-h{font-size:15px;font-weight:800;color:#0E5551;background:#EAF6F6;padding:8px 12px;border-radius:8px;margin-bottom:10px}
+    .cards{display:flex;gap:12px;margin-bottom:6px}
+    .kpi{flex:1;border:1.5px solid #D2E7E7;border-radius:10px;padding:12px;text-align:center}
+    .kpi .l{font-size:11px;color:#666;font-weight:600}
+    .kpi .v{font-size:19px;font-weight:800;margin-top:4px}
+    .kpi .v.g{color:#1E7A74}.kpi .v.e{color:#C1554F}
+    table{width:100%;border-collapse:collapse;font-size:12.5px;margin-top:4px}
+    th{background:#f4f4f4;font-weight:700;padding:7px 9px;text-align:right;border-bottom:2px solid #ddd}
+    th:first-child{text-align:left}
+    td{padding:6px 9px;border-bottom:1px solid #eee}
+    td.r{text-align:right;white-space:nowrap}
+    td.c{text-align:center}
+    td.pos{color:#1E7A74;font-weight:700}
+    tfoot td{font-weight:800;background:#EAF6F6;border-top:2px solid #2FA8A0}
+    .two-col{display:flex;gap:16px}
+    .two-col>div{flex:1}
+    .col-h{font-size:13px;font-weight:700;margin-bottom:6px;color:#333}
+    .foot{margin-top:26px;text-align:center;font-size:11px;color:#888;border-top:1px solid #ddd;padding-top:10px}
+    .pbtn{display:block;width:210mm;max-width:100%;margin:8mm auto;padding:5mm;border:none;border-radius:3mm;background:#2FA8A0;color:#fff;font-size:4mm;font-weight:700;cursor:pointer;font-family:'Noto Sans Lao',sans-serif}
+    @media print{.pbtn{display:none}body{background:#fff}.page{margin:0;padding:0}}
+  </style></head><body>
+  <div class="page">
+    <div class="rhead">${logoHtml}<div class="ht"><div class="rname">${esc(state.shop.name)}</div>${addrHtml}</div>
+      <div class="rtitle">ລີພອດປະຈຳເດືອນ<small>${monthLabel} · ພິມ ${printStr}</small></div></div>
+
+    <div class="sec">
+      <div class="sec-h">1. ສະຫຼຸບຮັບ-ຈ່າຍ ແລະ ຜົນປະກອບການ</div>
+      <div class="cards">
+        <div class="kpi"><div class="l">ລາຍຮັບລວມ</div><div class="v g">${fmt(D.totalIncome)}</div></div>
+        <div class="kpi"><div class="l">ລາຍຈ່າຍລວມ</div><div class="v e">${fmt(D.expTotal)}</div></div>
+        <div class="kpi"><div class="l">ກຳໄລສຸດທິ</div><div class="v ${D.netProfit>=0?'g':'e'}">${fmt(D.netProfit)}</div></div>
+        <div class="kpi"><div class="l">ຈຳນວນບິນຂາຍ</div><div class="v">${D.orders.length}</div></div>
+      </div>
+      <div class="two-col" style="margin-top:12px">
+        <div><div class="col-h">💰 ລາຍຮັບ ແຍກປະເພດ</div>
+          <table><tbody>${incomeRows}</tbody><tfoot><tr><td>ລວມ</td><td class="r">${fmt(D.totalIncome)}</td></tr></tfoot></table></div>
+        <div><div class="col-h">💸 ລາຍຈ່າຍ ແຍກປະເພດ</div>
+          <table><tbody>${expenseRows}</tbody><tfoot><tr><td>ລວມ</td><td class="r">${fmt(D.expTotal)}</td></tr></tfoot></table></div>
+      </div>
+      <div class="two-col" style="margin-top:12px">
+        <div><div class="col-h">ຮັບເງິນຕາມຊ່ອງທາງ</div>
+          <table><tbody><tr><td>💵 ເງິນສົດ</td><td class="r">${fmt(inBy.cash)}</td></tr><tr><td>🏦 ເງິນໂອນ</td><td class="r">${fmt(inBy.transfer)}</td></tr><tr><td>🛵 Food Panda</td><td class="r">${fmt(inBy.pandapay)}</td></tr></tbody></table></div>
+        <div><div class="col-h">ຈ່າຍເງິນຕາມຊ່ອງທາງ</div>
+          <table><tbody><tr><td>💵 ຈ່າຍສົດ</td><td class="r">${fmt(outBy.cash)}</td></tr><tr><td>🏦 ຈ່າຍໂອນ</td><td class="r">${fmt(outBy.transfer)}</td></tr></tbody></table></div>
+      </div>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h">2. ສະຖິຕິການຂາຍ ແຕ່ລະເຄື່ອງດື່ມ</div>
+      <table><thead><tr><th>ເຄື່ອງດື່ມ</th><th>ຈຳນວນ</th><th>ຍອດຂາຍ</th><th>ຕົ້ນທຶນ</th><th>ກຳໄລ</th></tr></thead>
+      <tbody>${statRows}</tbody>
+      <tfoot><tr><td>ລວມ (${fmt(cups)} ຈອກ)</td><td class="r">${fmt(cups)}</td><td class="r">${fmt(D.saleIncome)}</td><td class="r">${fmt(D.incCost)}</td><td class="r">${fmt(D.saleIncome-D.incCost)}</td></tr></tfoot></table>
+    </div>
+
+    <div class="sec">
+      <div class="sec-h">3. ສະຖານະສາງ / ວັດຖຸດິບ (ວັນທີພິມ)</div>
+      <table><thead><tr><th>ວັດຖຸດິບ</th><th>ທັງໝົດ</th><th>ໃຊ້ແລ້ວ</th><th>ຍັງເຫຼືອ</th><th>ມູນຄ່າ</th><th>ສະຖານະ</th></tr></thead>
+      <tbody>${stockRows}</tbody>
+      <tfoot><tr><td colspan="4">ມູນຄ່າສາງລວມ (ຄົງເຫຼືອ)</td><td class="r">${fmt(stockTotalValue)}</td><td></td></tr></tfoot></table>
+    </div>
+
+    <div class="foot">ລີພອດນີ້ສ້າງໂດຍ ລະບົບຂາຍ POS · ${esc(state.shop.name)} · ${monthLabel}</div>
+  </div>
+  <button class="pbtn" onclick="window.print()">🖨️ ພິມ / ບັນທຶກ PDF (A4)</button>
+  <script>setTimeout(function(){window.print()},800);<\/script></body></html>`;
+  const w=window.open('','_blank');
+  if(w){w.document.write(doc);w.document.close();}else toast('ກະລຸນາອະນຸຍາດ pop-up ເພື່ອພິມ',true);
+}
+
+function renderExpenseCatTable(outCat, total){
+  const rows=state.expenseCats.map(c=>{
+    const v=outCat[c.id]||0; if(v===0)return '';
+    const pct=total>0?Math.round(v/total*100):0;
+    return `<div class="bar-item">
+      <div class="bar-top"><span class="bar-nm"><span class="em">${c.emoji}</span>${c.name}</span><span class="bar-val">${fmt(v)} (${pct}%)</span></div>
+      <div class="bar-track"><div class="bar-fill r2" style="width:${pct}%"></div></div>
+    </div>`;
+  }).filter(Boolean).join('');
+  return rows||`<div class="tiny-note" style="padding:14px 0">ຍັງບໍ່ມີການບັນທຶກລາຍຈ່າຍ</div>`;
+}
+
+/* Ledger — group by day, income (orders + manual) + expenses interleaved */
+function renderLedger(orders, expenses, incomes){
+  incomes=incomes||[];
+  const events=[];
+  orders.forEach(o=>events.push({type:'in',time:o.time,title:'ຂາຍ '+orderCode(o),sub:o.items.map(i=>i.emoji+i.qty).join(' ')+' · '+PAYMENTS[o.payment],amount:o.total,pay:o.payment,ref:o.id}));
+  incomes.forEach(i=>events.push({type:'in',time:i.date,title:incCatInfo(i.category).emoji+' '+esc(i.note||incCatInfo(i.category).name),sub:(i.method==='cash'?'ຮັບສົດ':'ຮັບໂອນ'),amount:i.amount,ref:i.id,inc:true}));
+  expenses.forEach(e=>events.push({type:'out',time:e.date,title:expCatInfo(e.category).emoji+' '+esc(e.note||expCatInfo(e.category).name),sub:(e.qty>1?e.qty+' × '+fmt(e.unitPrice)+' · ':'')+(e.method==='cash'?'ຈ່າຍສົດ':'ຈ່າຍໂອນ'),amount:e.amount,ref:e.id,exp:true}));
+  if(events.length===0){
+    return `<div class="empty-state"><span class="es-em">📒</span><div class="es-t">ຍັງບໍ່ມີລາຍການໃນເດືອນນີ້</div><div class="es-s">ຂາຍເຄື່ອງ ຫຼື ບັນທຶກລາຍຈ່າຍ<br>ແລ້ວຈະສະແດງເປັນຕາຕະລາງລາຍວັນ</div></div>`;
+  }
+  // group by day key
+  const groups={};
+  events.forEach(ev=>{ const d=new Date(ev.time); const k=d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); (groups[k]=groups[k]||[]).push(ev); });
+  const keys=Object.keys(groups).sort((a,b)=>b.localeCompare(a));  // newest first
+
+  return keys.map(k=>{
+    const evs=groups[k].sort((a,b)=>new Date(b.time)-new Date(a.time));
+    const dIn=evs.filter(e=>e.type==='in').reduce((s,e)=>s+e.amount,0);
+    const dOut=evs.filter(e=>e.type==='out').reduce((s,e)=>s+e.amount,0);
+    const dd=new Date(k+'T00:00:00');
+    const dateLabel=dd.getDate()+' '+LAO_MONTHS[dd.getMonth()];
+    const rows=evs.map(ev=>{
+      let delBtn='', clickBody='';
+      if(ev.exp){ delBtn=`<button class="lr-del" onclick="deleteExpense('${ev.ref}')">🗑</button>`; clickBody=`onclick="editExpense('${ev.ref}')" style="cursor:pointer"`; }
+      else if(ev.inc){ delBtn=`<button class="lr-del" onclick="deleteIncome('${ev.ref}')">🗑</button>`; clickBody=`onclick="editIncome('${ev.ref}')" style="cursor:pointer"`; }
+      else { clickBody=`onclick="showReceipt(state.orders.find(x=>x.id==='${ev.ref}'))" style="cursor:pointer"`; }
+      return `<div class="ledger-row">
+        <div class="lr-ico ${ev.type==='in'?'in':'out'}">${ev.type==='in'?'⬆️':'⬇️'}</div>
+        <div class="lr-body" ${clickBody}><div class="lr-t">${ev.title}</div><div class="lr-s">${ev.sub}</div></div>
+        <div class="lr-amt ${ev.type==='in'?'in':'out'}">${ev.type==='in'?'+':'−'}${fmt(ev.amount)}</div>
+        ${delBtn}
+      </div>`;
+    }).join('');
+    return `<div class="day-group">
+      <div class="day-head"><div class="dh-date">${dateLabel}</div>
+        <div class="dh-sum"><span class="dh-in">▲ ${fmt(dIn)}</span><span class="dh-out">▼ ${fmt(dOut)}</span></div>
+      </div>
+      <div class="day-rows">${rows}</div>
+    </div>`;
+  }).join('');
+}
+
+function dateInputVal(iso){ const d=iso?new Date(iso):new Date(); return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+
+/* Expense form */
+function addExpense(){ expenseForm(null); }
+function editExpense(id){ const e=state.expenses.find(x=>x.id===id); if(e)expenseForm(e); }
+function expenseForm(exp){
+  const e=exp||{category:state.expenseCats[0].id,note:'',qty:1,unitPrice:0,method:'cash'};
+  const catOpts=state.expenseCats.map(c=>`<option value="${c.id}" ${e.category===c.id?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('');
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ບັນທຶກລາຍຈ່າຍ</h3><p class="msub">ໃສ່ລາຍລະອຽດເງິນທີ່ຈ່າຍອອກ</p>
+    <div class="fg full" style="margin-bottom:14px"><label>ວັນເດືອນປີ</label><input type="date" id="expDate" value="${dateInputVal(exp?exp.date:null)}"></div>
+    <div class="fg full" style="margin-bottom:14px"><label>ປະເພດລາຍຈ່າຍ</label>
+      <div style="display:flex;gap:8px"><select id="expCat" style="flex:1">${catOpts}</select>
+      <button class="lu-btn" style="padding:0 16px;white-space:nowrap" onclick="addExpenseCat()">＋ ໃໝ່</button></div>
+    </div>
+    <div class="fg full" style="margin-bottom:14px"><label>ລາຍລະອຽດ</label><input type="text" id="expNote" value="${esc(e.note)}" placeholder="ເຊັ່ນ ຊື້ຊາໄທ 5 ຖົງ"></div>
+    <div class="form-grid" style="margin-bottom:10px">
+      <div class="fg"><label>ຈຳນວນ</label><input type="number" id="expQty" value="${e.qty}" min="1" inputmode="numeric" oninput="updateExpTotal()"></div>
+      <div class="fg"><label>ລາຄາຕໍ່ໜ່ວຍ</label><div class="unit-in"><input type="number" id="expPrice" value="${e.unitPrice}" inputmode="numeric" oninput="updateExpTotal()"><span class="u">ກີບ</span></div></div>
+    </div>
+    <div class="opt-row" style="margin-bottom:14px">
+      <button type="button" class="opt-btn" onclick="bumpExpPrice(1000)">+1,000</button>
+      <button type="button" class="opt-btn" onclick="bumpExpPrice(5000)">+5,000</button>
+      <button type="button" class="opt-btn" onclick="bumpExpPrice(10000)">+10,000</button>
+      <button type="button" class="opt-btn" onclick="bumpExpPrice(0)">ລ້າງ</button>
+    </div>
+    <div class="fg full" style="margin-bottom:6px"><label>ຈ່າຍຜ່ານ</label>
+      <div class="opt-row" id="expMethodRow">
+        <button type="button" class="opt-btn ${e.method==='cash'?'on':''}" data-m="cash" onclick="setExpMethod('cash')">💵 ເງິນສົດ</button>
+        <button type="button" class="opt-btn ${e.method==='transfer'?'on':''}" data-m="transfer" onclick="setExpMethod('transfer')">🏦 ເງິນໂອນ</button>
+      </div>
+    </div>
+    <input type="hidden" id="expMethod" value="${e.method}">
+    <div class="suggested-price" style="margin-top:14px"><span class="sp-l">ລວມເປັນເງິນ</span><span class="sp-v" id="expTotalView">${kip(e.qty*e.unitPrice)}</span></div>
+    <button class="btn-save" onclick="saveExpense('${exp?exp.id:''}')"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>ບັນທຶກ</button>
+    ${exp?`<button class="btn-ghost" style="color:var(--danger-deep)" onclick="deleteExpense('${exp.id}')">🗑️ ລຶບລາຍການນີ້</button>`:''}
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function setExpMethod(m){ $('expMethod').value=m; document.querySelectorAll('#expMethodRow .opt-btn').forEach(b=>b.classList.toggle('on',b.dataset.m===m)); }
+function bumpExpPrice(step){ const el=$('expPrice'); if(!el)return; el.value=step===0?0:(parseFloat(el.value)||0)+step; updateExpTotal(); }
+function updateExpTotal(){
+  const q=parseFloat($('expQty').value)||0, p=parseFloat($('expPrice').value)||0;
+  const v=$('expTotalView'); if(v)v.textContent=kip(q*p);
+}
+function saveExpense(id){
+  const note=$('expNote').value.trim();
+  const qty=parseFloat($('expQty').value)||0;
+  const unitPrice=parseFloat($('expPrice').value)||0;
+  const amount=qty*unitPrice;
+  if(amount<=0){ toast('ກະລຸນາໃສ່ຈຳນວນ ແລະ ລາຄາ',true); return; }
+  const dateISO=$('expDate').value?new Date($('expDate').value+'T12:00:00').toISOString():new Date().toISOString();
+  const data={date:dateISO,category:$('expCat').value,note,qty,unitPrice,amount,method:$('expMethod').value};
+  if(id){ Object.assign(state.expenses.find(e=>e.id===id),data); toast('ແກ້ໄຂແລ້ວ'); }
+  else{ state.expenses.push({id:'e'+Date.now(),...data}); toast('ບັນທຶກລາຍຈ່າຍແລ້ວ'); }
+  save(); closeModal(); refresh();
+}
+function deleteExpense(id){ state.expenses=state.expenses.filter(e=>e.id!==id); save(); closeModal(); refresh(); toast('ລຶບລາຍຈ່າຍແລ້ວ'); }
+
+/* Income form (ລາຍຮັບອື່ນ ນອກຈາກການຂາຍ) */
+function addIncome(){ incomeForm(null); }
+function editIncome(id){ const i=state.incomes.find(x=>x.id===id); if(i)incomeForm(i); }
+function incomeForm(inc){
+  const e=inc||{category:state.incomeCats[0].id,note:'',amount:0,method:'cash'};
+  const catOpts=state.incomeCats.map(c=>`<option value="${c.id}" ${e.category===c.id?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('');
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ບັນທຶກລາຍຮັບ</h3><p class="msub">ລາຍຮັບອື່ນ ນອກຈາກການຂາຍໜ້າຮ້ານ</p>
+    <div class="fg full" style="margin-bottom:14px"><label>ວັນເດືອນປີ</label><input type="date" id="incDate" value="${dateInputVal(inc?inc.date:null)}"></div>
+    <div class="fg full" style="margin-bottom:14px"><label>ປະເພດລາຍຮັບ</label>
+      <div style="display:flex;gap:8px"><select id="incCat" style="flex:1">${catOpts}</select>
+      <button class="lu-btn" style="padding:0 16px;white-space:nowrap" onclick="addIncomeCat()">＋ ໃໝ່</button></div>
+    </div>
+    <div class="fg full" style="margin-bottom:14px"><label>ລາຍລະອຽດ</label><input type="text" id="incNote" value="${esc(e.note)}" placeholder="ເຊັ່ນ ຂາຍສົ່ງ, ເງິນຄືນ"></div>
+    <div class="fg full" style="margin-bottom:10px"><label>ຈຳນວນເງິນ</label><div class="unit-in"><input type="number" id="incAmount" value="${e.amount}" inputmode="numeric" oninput="updateIncView()"><span class="u">ກີບ</span></div></div>
+    <div class="opt-row" style="margin-bottom:14px">
+      <button type="button" class="opt-btn" onclick="bumpIncAmount(1000)">+1,000</button>
+      <button type="button" class="opt-btn" onclick="bumpIncAmount(10000)">+10,000</button>
+      <button type="button" class="opt-btn" onclick="bumpIncAmount(50000)">+50,000</button>
+      <button type="button" class="opt-btn" onclick="bumpIncAmount(0)">ລ້າງ</button>
+    </div>
+    <div class="fg full" style="margin-bottom:6px"><label>ຮັບຜ່ານ</label>
+      <div class="opt-row" id="incMethodRow">
+        <button type="button" class="opt-btn ${e.method==='cash'?'on':''}" data-m="cash" onclick="setIncMethod('cash')">💵 ເງິນສົດ</button>
+        <button type="button" class="opt-btn ${e.method==='transfer'?'on':''}" data-m="transfer" onclick="setIncMethod('transfer')">🏦 ເງິນໂອນ</button>
+      </div>
+    </div>
+    <input type="hidden" id="incMethod" value="${e.method}">
+    <div class="suggested-price" style="margin-top:14px"><span class="sp-l">ລວມ</span><span class="sp-v" id="incView">${kip(e.amount)}</span></div>
+    <button class="btn-save" onclick="saveIncome('${inc?inc.id:''}')"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>ບັນທຶກ</button>
+    ${inc?`<button class="btn-ghost" style="color:var(--danger-deep)" onclick="deleteIncome('${inc.id}')">🗑️ ລຶບລາຍການນີ້</button>`:''}
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function setIncMethod(m){ $('incMethod').value=m; document.querySelectorAll('#incMethodRow .opt-btn').forEach(b=>b.classList.toggle('on',b.dataset.m===m)); }
+function bumpIncAmount(step){ const el=$('incAmount'); if(!el)return; el.value=step===0?0:(parseFloat(el.value)||0)+step; updateIncView(); }
+function updateIncView(){ const v=$('incView'); if(v)v.textContent=kip(parseFloat($('incAmount').value)||0); }
+function saveIncome(id){
+  const amount=parseFloat($('incAmount').value)||0;
+  if(amount<=0){ toast('ໃສ່ຈຳນວນເງິນ',true); return; }
+  const dateISO=$('incDate').value?new Date($('incDate').value+'T12:00:00').toISOString():new Date().toISOString();
+  const data={date:dateISO,category:$('incCat').value,note:$('incNote').value.trim(),amount,method:$('incMethod').value};
+  if(id){ Object.assign(state.incomes.find(i=>i.id===id),data); toast('ແກ້ໄຂແລ້ວ'); }
+  else{ state.incomes.push({id:'inc'+Date.now(),...data}); toast('ບັນທຶກລາຍຮັບແລ້ວ'); }
+  save(); closeModal(); refresh();
+}
+function deleteIncome(id){ state.incomes=state.incomes.filter(i=>i.id!==id); save(); closeModal(); refresh(); toast('ລຶບລາຍຮັບແລ້ວ'); }
+
+/* ============================================================
+   PAGE: STATS (ລະອຽດ — ຕາຕະລາງແຕ່ລະເຄື່ອງດື່ມ)
+   ============================================================ */
+let statPeriod='month';
+function renderStats(){
+  const now=new Date();
+  let orders, periodLabel;
+  if(statPeriod==='day'){ orders=state.orders.filter(o=>todayKey(new Date(o.time))===todayKey(now)); periodLabel='ມື້ນີ້'; }
+  else if(statPeriod==='week'){ orders=state.orders.filter(o=>sameWeek(new Date(o.time),now)); periodLabel='ອາທິດນີ້'; }
+  else{ orders=state.orders.filter(o=>inMonth(o.time,state.viewYear,state.viewMonth)); periodLabel=LAO_MONTHS[state.viewMonth]+' '+state.viewYear; }
+
+  const rev=orders.reduce((s,o)=>s+o.total,0);
+  const cost=orders.reduce((s,o)=>s+o.cost,0);
+  const profit=rev-cost;
+  const count=orders.length;
+  const cups=orders.reduce((s,o)=>s+o.items.reduce((a,i)=>a+i.qty,0),0);
+
+  // ຕໍ່ເຄື່ອງດື່ມ: qty, revenue, cost, profit
+  const per={};
+  orders.forEach(o=>o.items.forEach(i=>{
+    if(!per[i.id])per[i.id]={name:i.name,emoji:i.emoji,qty:0,rev:0,cost:0};
+    per[i.id].qty+=i.qty; per[i.id].rev+=i.price*i.qty; per[i.id].cost+=(i.cost||0)*i.qty;
+  }));
+  const rows=Object.values(per).sort((a,b)=>b.qty-a.qty);
+  const maxQty=rows.length?rows[0].qty:1;
+
+  // ຕາຕະລາງລະອຽດ
+  let tableHtml;
+  if(rows.length===0){
+    tableHtml=`<div class="empty-state" style="padding:30px 20px"><span class="es-em">📊</span><div class="es-t">ຍັງບໍ່ມີການຂາຍ</div><div class="es-s">ຂາຍເຄື່ອງດື່ມແລ້ວຕາຕະລາງຈະສະແດງທີ່ນີ້</div></div>`;
+  }else{
+    const trs=rows.map(r=>{
+      const pr=r.rev-r.cost;
+      return `<tr>
+        <td>${r.emoji} ${esc(r.name)}</td>
+        <td>${fmt(r.qty)}</td>
+        <td>${fmt(r.rev)}</td>
+        <td>${fmt(r.cost)}</td>
+        <td class="pos">${fmt(pr)}</td>
+      </tr>`;
+    }).join('');
+    tableHtml=`<div class="tbl-wrap"><table class="data">
+      <thead><tr><th>ເຄື່ອງດື່ມ</th><th>ຈຳນວນ</th><th>ຍອດຂາຍ</th><th>ຕົ້ນທຶນ</th><th>ກຳໄລ</th></tr></thead>
+      <tbody>${trs}</tbody>
+      <tfoot><tr><td>ລວມ</td><td>${fmt(cups)}</td><td>${fmt(rev)}</td><td>${fmt(cost)}</td><td>${fmt(profit)}</td></tr></tfoot>
+    </table></div>
+    <div class="tbl-scroll-hint">← ເລື່ອນຊ້າຍ-ຂວາເພື່ອເບິ່ງທຸກຖັນ →</div>`;
+  }
+
+  // ກຣາຟຂາຍດີ
+  let barsHtml;
+  if(rows.length===0){ barsHtml=''; }
+  else{
+    barsHtml=`<div class="card"><div class="card-title"><span class="dot"></span>ອັນດັບຂາຍດີ</div>`+
+    rows.map((r,idx)=>{
+      const pct=Math.round(r.qty/maxQty*100);
+      const rClass=idx===0?'r1':idx===1?'r2':'r3';
+      const medal=idx===0?'🥇':idx===1?'🥈':idx===2?'🥉':'';
+      return `<div class="bar-item"><div class="bar-top"><span class="bar-nm"><span class="em">${r.emoji}</span>${esc(r.name)} ${medal}</span><span class="bar-val">${r.qty} ຈອກ</span></div><div class="bar-track"><div class="bar-fill ${rClass}" style="width:${pct}%"></div></div><div class="bar-sub">ຍອດ ${kip(r.rev)} · ກຳໄລ ${kip(r.rev-r.cost)}</div></div>`;
+    }).join('')+`</div>`;
+  }
+
+  const showMonthNav = statPeriod==='month';
+
+  return `<div class="page">
+    <div class="sec-head"><h2>ສະຖິຕິ</h2><p>ລາຍລະອຽດການຂາຍ ແລະ ກຳໄລ</p></div>
+    <div class="seg">
+      <button class="${statPeriod==='day'?'on':''}" onclick="setStatPeriod('day')">ມື້</button>
+      <button class="${statPeriod==='week'?'on':''}" onclick="setStatPeriod('week')">ອາທິດ</button>
+      <button class="${statPeriod==='month'?'on':''}" onclick="setStatPeriod('month')">ເດືອນ</button>
+    </div>
+    ${showMonthNav?monthNav():''}
+    <div class="stat-grid">
+      <div class="stat mint"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#0E5551" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="lbl">ຍອດຂາຍ ${periodLabel}</div><div class="val">${fmt(rev)} <small>ກີບ</small></div></div>
+      <div class="stat lav"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#5B4B9A" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="lbl">ກຳໄລ</div><div class="val">${fmt(profit)} <small>ກີບ</small></div></div>
+      <div class="stat peach"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#B5651D" stroke-width="2"><path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z"/><line x1="7" y1="7" x2="7.01" y2="7"/></svg></div><div class="lbl">ຕົ້ນທຶນ</div><div class="val">${fmt(cost)} <small>ກີບ</small></div></div>
+      <div class="stat sky"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2C6E8F" stroke-width="2"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/></svg></div><div class="lbl">ຂາຍໄດ້ (ຈອກ)</div><div class="val">${fmt(cups)}</div></div>
+    </div>
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>ຕາຕະລາງແຕ່ລະເຄື່ອງດື່ມ (${periodLabel})</div>
+      ${tableHtml}
+    </div>
+    ${barsHtml}
+  </div>`;
+}
+function setStatPeriod(p){ statPeriod=p; refresh(); }
+
+/* month nav (shared) */
+function monthNav(){
+  return `<div class="month-nav">
+    <button onclick="shiftMonth(-1)"><svg viewBox="0 0 24 24" fill="none" stroke="#0B2E33" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg></button>
+    <div class="mlabel">${LAO_MONTHS[state.viewMonth]}<small>${state.viewYear}</small></div>
+    <button onclick="shiftMonth(1)"><svg viewBox="0 0 24 24" fill="none" stroke="#0B2E33" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg></button>
+  </div>`;
+}
+function shiftMonth(d){
+  state.viewMonth+=d;
+  if(state.viewMonth>11){state.viewMonth=0;state.viewYear++;}
+  if(state.viewMonth<0){state.viewMonth=11;state.viewYear--;}
+  refresh();
+}
+
+/* ============================================================
+   PAGE: STOCK (ຫົວໜ່ວຍ + ປະລິມານ ລະອຽດ)
+   ============================================================ */
+function renderStock(){
+  const low=state.ingredients.filter(i=>i.stock<=i.lowAt);
+  let alertHtml='';
+  if(low.length>0){
+    alertHtml=`<div class="alert-banner"><div class="ab-ico">⚠️</div><div class="ab-txt"><div class="ab-t">ກະຕ໋ອກໃກ້ຈະໝົດ!</div><div class="ab-s">${low.map(i=>i.emoji+esc(i.name)).join(', ')} ຄວນເຕີມ</div></div></div>`;
+  }
+  const rows=state.ingredients.map(i=>{
+    const totalBase=i.stock+(i.used||0);            // ຈຳນວນປະລິມານທັງໝົດ (ເຄີຍມີ)
+    const ratio=i.stock/(i.lowAt*3||1);
+    const pct=Math.min(100,Math.round(ratio*100));
+    let badge,fill;
+    if(i.stock<=0){badge='<span class="stock-badge out">ໝົດແລ້ວ</span>';fill='var(--danger)';}
+    else if(i.stock<=i.lowAt){badge='<span class="stock-badge low">ໃກ້ໝົດ</span>';fill='var(--warn)';}
+    else{badge='<span class="stock-badge ok">ພຽງພໍ</span>';fill='var(--teal)';}
+    const cpb=costPerBase(i);
+    const containersLeft=i.qtyPerUnit>0?(i.stock/i.qtyPerUnit):0;
+    return `<div class="stock-row">
+      <div class="stock-top">
+        <div class="stock-emoji">${i.emoji}</div>
+        <div class="stock-info">
+          <div class="stock-nm">${esc(i.name)}</div>
+          <div class="stock-qty">ຫົວໜ່ວຍ: ${esc(i.unit)} · ${fmt(i.qtyPerUnit)} ${esc(i.baseUnit)}/${esc(i.unit)} · ${fmt(i.purchaseCost)} ກີບ</div>
+          <div class="cost-per-base">ຕົ້ນທຶນ ${cpb.toFixed(1)} ກີບ/${esc(i.baseUnit)}</div>
+        </div>
+        ${badge}
+      </div>
+      <div class="stock-grid">
+        <div class="sg-cell"><div class="sg-l">ທັງໝົດ</div><div class="sg-v">${fmt(totalBase)} <small>${esc(i.baseUnit)}</small></div></div>
+        <div class="sg-cell"><div class="sg-l">ໃຊ້ແລ້ວ</div><div class="sg-v used">${fmt(i.used||0)} <small>${esc(i.baseUnit)}</small></div></div>
+        <div class="sg-cell"><div class="sg-l">ຍັງເຫຼືອ</div><div class="sg-v left">${fmt(i.stock)} <small>${esc(i.baseUnit)}</small></div></div>
+      </div>
+      <div class="stock-bar"><div class="stock-fill" style="width:${pct}%;background:${fill}"></div></div>
+      <div class="stock-sub">≈ ${containersLeft.toFixed(1)} ${esc(i.unit)} ຄົງເຫຼືອ</div>
+      <div class="stock-actions">
+        <button class="sa-add" onclick="stockChange('${i.id}','add')">＋ ເຕີມ</button>
+        <button class="sa-use" onclick="stockChange('${i.id}','use')">－ ຫັກ</button>
+        <button class="sa-use" onclick="editIngredient('${i.id}')">✏️ ແກ້ໄຂ</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `<div class="page">
+    <div class="sec-head"><h2>ສາງ / ວັດຖຸດິບ</h2><p>ຈັດການສະຕ໋ອກ ຫົວໜ່ວຍ ແລະ ຕົ້ນທຶນ</p></div>
+    ${alertHtml}
+    <button class="add-btn-row" onclick="addIngredient()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>ເພີ່ມວັດຖຸດິບ</button>
+    ${rows}
+    <div class="tiny-note">💡 "ຍັງເຫຼືອ" ຈະລົດລົງເອງເມື່ອຂາຍເຄື່ອງທີ່ໃຊ້ວັດຖຸດິບນີ້ · ຕົ້ນທຶນຄິດຈາກ ລາຄາ ÷ ປະລິມານຕໍ່ຫົວໜ່ວຍ</div>
+  </div>`;
+}
+
+function stockChange(id,mode){
+  const ing=findIng(id); if(!ing)return;
+  const title=mode==='add'?'ເຕີມສະຕ໋ອກ':'ຫັກສະຕ໋ອກ';
+  const perUnit=ing.qtyPerUnit;
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>${title}</h3>
+    <p class="msub">${ing.emoji} ${esc(ing.name)} · ເຫຼືອ ${fmt(ing.stock)} ${esc(ing.baseUnit)}</p>
+    ${mode==='add'?`<div class="fg full" style="margin-bottom:14px"><label>ເຕີມເປັນ ${esc(ing.unit)} (1 ${esc(ing.unit)} = ${fmt(perUnit)} ${esc(ing.baseUnit)})</label>
+      <div class="opt-row" style="margin-top:4px">
+        <button class="opt-btn" onclick="setStockByUnit('${id}',1)">1 ${esc(ing.unit)}</button>
+        <button class="opt-btn" onclick="setStockByUnit('${id}',5)">5 ${esc(ing.unit)}</button>
+        <button class="opt-btn" onclick="setStockByUnit('${id}',10)">10 ${esc(ing.unit)}</button>
+      </div></div>`:''}
+    <div class="fg full"><label>${mode==='add'?'ຫຼື ໃສ່ຈຳນວນ':'ຈຳນວນທີ່ຫັກ'} (${esc(ing.baseUnit)})</label><input type="number" id="stockAmt" value="${mode==='add'?perUnit:0}" min="0" inputmode="numeric"></div>
+    <button class="btn-save" onclick="applyStock('${id}','${mode}')">ຢືນຢັນ</button>
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+  setTimeout(()=>{const el=$('stockAmt');if(el)el.select();},100);
+}
+function setStockByUnit(id,units){
+  const ing=findIng(id); if(!ing)return;
+  const el=$('stockAmt'); if(el)el.value=units*ing.qtyPerUnit;
+}
+function applyStock(id,mode){
+  const ing=findIng(id);
+  const amt=parseFloat($('stockAmt').value)||0;
+  if(amt<=0){ toast('ກະລຸນາໃສ່ຈຳນວນ',true); return; }
+  if(mode==='add'){ ing.stock+=amt; }
+  else { const take=Math.min(amt,ing.stock); ing.stock=Math.max(0,ing.stock-amt); ing.used=(ing.used||0)+take; }
+  save(); closeModal(); refresh();
+  toast((mode==='add'?'ເຕີມ ':'ຫັກ ')+fmt(amt)+' '+ing.baseUnit+' ສຳເລັດ');
+}
+function addIngredient(){ ingredientForm(null); }
+function editIngredient(id){ ingredientForm(findIng(id)); }
+function ingredientForm(ing){
+  const isEdit=!!ing;
+  const e=ing||{name:'',emoji:'📦',category:'other',unit:'ຕຸກ',qtyPerUnit:1500,baseUnit:'ml',purchaseCost:0,stock:0,used:0,lowAt:0};
+  // ຈຳນວນຫົວໜ່ວຍທັງໝົດ (ຄິດຈາກ total base ÷ qtyPerUnit)
+  const totalBase=e.stock+(e.used||0);
+  const startContainers = e.qtyPerUnit>0 ? Math.round((totalBase/e.qtyPerUnit)*10)/10 : 0;
+  const emojiBtns=ING_EMOJIS.map(em=>`<button class="emoji-opt ${e.emoji===em?'on':''}" onclick="pickEmoji(this,'ingEmoji','${em}')">${em}</button>`).join('');
+  const catOpts=state.ingCats.map(c=>`<option value="${c.id}" ${e.category===c.id?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('');
+  const baseOpts=BASE_UNITS.map(u=>`<option value="${u}" ${e.baseUnit===u?'selected':''}>${u}</option>`).join('');
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>${isEdit?'ແກ້ໄຂວັດຖຸດິບ':'ເພີ່ມວັດຖຸດິບ'}</h3>
+    <p class="msub">ຕົວຢ່າງ: ນົມ 1 ຕຸກ = 1500ml ລາຄາ 55,000 → ລະບົບຄິດ 36.67 ກີບ/ml</p>
+    <input type="hidden" id="ingEmoji" value="${e.emoji}">
+    <div class="fg full" style="margin-bottom:14px"><label>ໄອຄອນ</label><div class="emoji-pick" style="max-height:150px;overflow-y:auto">${emojiBtns}</div></div>
+    <div class="fg full" style="margin-bottom:14px"><label>ຊື່ວັດຖຸດິບ</label><input type="text" id="ingName" value="${esc(e.name)}" placeholder="ເຊັ່ນ ນົມສົດ"></div>
+    <div class="fg full" style="margin-bottom:14px"><label>ປະເພດ</label>
+      <div style="display:flex;gap:8px"><select id="ingCat" style="flex:1">${catOpts}</select>
+      <button class="lu-btn" style="padding:0 16px;white-space:nowrap" onclick="addIngCat()">＋ ໃໝ່</button></div>
+    </div>
+
+    <div class="divider-lbl" style="margin:8px 0 12px">ຫົວໜ່ວຍ (ຕອນຊື້ເຂົ້າ)</div>
+    <div class="form-grid" style="margin-bottom:14px">
+      <div class="fg"><label>ຫົວໜ່ວຍ</label><input type="text" id="ingUnit" value="${esc(e.unit)}" placeholder="ຕຸກ/ຖົງ/ເປົາ"></div>
+      <div class="fg"><label>ໜ່ວຍໃຊ້</label><select id="ingBUnit">${baseOpts}</select></div>
+    </div>
+    <div class="form-grid" style="margin-bottom:14px">
+      <div class="fg"><label>ປະລິມານຕໍ່ຕຸກ/ຖົງ</label><div class="unit-in"><input type="number" id="ingQtyPer" value="${e.qtyPerUnit}" inputmode="numeric" oninput="updateIngCalc()"><span class="u" id="ingQtyUnit">${esc(e.baseUnit)}</span></div></div>
+      <div class="fg"><label>ລາຄາຕໍ່ຕຸກ/ຖົງ</label><div class="unit-in"><input type="number" id="ingPCost" value="${e.purchaseCost}" inputmode="numeric" oninput="updateIngCalc()"><span class="u">ກີບ</span></div></div>
+    </div>
+    <div class="calc-preview" id="ingCalcPrev" style="margin-top:0;margin-bottom:14px"></div>
+
+    <div class="divider-lbl" style="margin:8px 0 12px">ຈຳນວນທັງໝົດ (ຕອນນີ້ມີເທົ່າໃດ)</div>
+    <div class="form-grid" style="margin-bottom:14px">
+      <div class="fg"><label>ຈຳນວນ (ຕຸກ/ຖົງ)</label><input type="number" id="ingContainers" value="${startContainers}" min="0" inputmode="decimal" oninput="updateIngCalc()"></div>
+      <div class="fg"><label>ເຕືອນເມື່ອເຫຼືອຕ່ຳກວ່າ</label><div class="unit-in"><input type="number" id="ingLow" value="${e.lowAt}" inputmode="numeric"><span class="u" id="ingLowUnit">${esc(e.baseUnit)}</span></div></div>
+    </div>
+    <div class="calc-preview" id="ingTotalPrev" style="margin-top:0;margin-bottom:6px"></div>
+    ${isEdit?`<div class="tiny-note" style="text-align:left">ໝາຍເຫດ: ແກ້ໄຂຈຳນວນທັງໝົດຈະຕັ້ງ "ຍັງເຫຼືອ" ໃໝ່ (ຮັກສາ "ໃຊ້ແລ້ວ" = ${fmt(e.used||0)} ${esc(e.baseUnit)})</div>`:''}
+
+    <button class="btn-save" onclick="saveIngredient('${ing?ing.id:''}')"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>${isEdit?'ບັນທຶກ':'ເພີ່ມ'}</button>
+    ${isEdit?`<button class="btn-ghost" style="color:var(--danger-deep)" onclick="deleteIngredient('${ing.id}')">🗑️ ລຶບວັດຖຸດິບນີ້</button>`:''}
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+  updateIngCalc();
+}
+function updateIngCalc(){
+  const cost=parseFloat($('ingPCost').value)||0;
+  const qty=parseFloat($('ingQtyPer').value)||0;
+  const bu=$('ingBUnit').value;
+  const containers=parseFloat($('ingContainers').value)||0;
+  const cpb=qty>0?cost/qty:0;
+  // sync unit labels
+  const qu=$('ingQtyUnit'); if(qu)qu.textContent=bu;
+  const lu=$('ingLowUnit'); if(lu)lu.textContent=bu;
+  const p=$('ingCalcPrev');
+  if(p)p.innerHTML=`<div class="cp-row big" style="border:none;margin:0;padding:0"><span class="cp-l">ຕົ້ນທຶນຕໍ່ ${esc(bu)}</span><span class="cp-v pos-margin">${cpb.toFixed(2)} ກີບ/${esc(bu)}</span></div>`;
+  const tp=$('ingTotalPrev');
+  if(tp){
+    const totalBase=containers*qty;
+    const totalVal=containers*cost;
+    tp.innerHTML=`<div class="cp-row"><span class="cp-l">ປະລິມານທັງໝົດ</span><span class="cp-v">${fmt(totalBase)} ${esc(bu)}</span></div>
+    <div class="cp-row"><span class="cp-l">ມູນຄ່າສາງ</span><span class="cp-v pos-margin">${kip(totalVal)}</span></div>`;
+  }
+}
+function pickEmoji(btn,hiddenId,em){
+  btn.parentElement.querySelectorAll('.emoji-opt').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on'); $(hiddenId).value=em;
+}
+function saveIngredient(id){
+  const name=$('ingName').value.trim();
+  if(!name){ toast('ກະລຸນາປ້ອນຊື່',true); return; }
+  const qtyPer=parseFloat($('ingQtyPer').value)||0;
+  if(qtyPer<=0){ toast('ໃສ່ປະລິມານຕໍ່ຕຸກ/ຖົງ',true); return; }
+  const containers=parseFloat($('ingContainers').value)||0;
+  const totalBase=containers*qtyPer;
+  const existing=id?findIng(id):null;
+  const used=existing?(existing.used||0):0;
+  // ຍັງເຫຼືອ = ທັງໝົດ − ໃຊ້ແລ້ວ (ບໍ່ຕິດລົບ)
+  const stock=Math.max(0, totalBase-used);
+  const data={
+    name, emoji:$('ingEmoji').value, category:$('ingCat').value,
+    unit:$('ingUnit').value.trim()||'ໜ່ວຍ', qtyPerUnit:qtyPer,
+    baseUnit:$('ingBUnit').value, purchaseCost:parseFloat($('ingPCost').value)||0,
+    stock, used, lowAt:parseFloat($('ingLow').value)||0,
+  };
+  if(id){ Object.assign(findIng(id),data); toast('ບັນທຶກແລ້ວ'); }
+  else{ state.ingredients.push({id:'ing'+Date.now(),...data}); toast('ເພີ່ມວັດຖຸດິບແລ້ວ'); }
+  save(); closeModal(); refresh();
+}
+function deleteIngredient(id){
+  // ເຊັກວ່າມີເມນູໃຊ້ຢູ່ບໍ່
+  const used=state.menu.filter(m=>(m.recipe||[]).some(r=>r.ingredientId===id));
+  if(used.length>0){
+    toast('ວັດຖຸດິບນີ້ຖືກໃຊ້ໃນ '+used.length+' ເມນູ ລຶບບໍ່ໄດ້',true);
+    return;
+  }
+  state.ingredients=state.ingredients.filter(i=>i.id!==id);
+  save(); closeModal(); refresh(); toast('ລຶບແລ້ວ');
+}
+
+/* ============================================================
+   ໝວດໝູ່ (Category) — ເພີ່ມ/ບັນທຶກເອງໄດ້ ບໍ່ຈຳກັດ
+   ============================================================ */
+let _catCtx=null; // {type, selectId} — ບອກວ່າກຳລັງເພີ່ມ cat ໃຫ້ບ່ອນໃດ
+function addIngCat(){ openCatModal('ing'); }
+function addMenuCat(){ openCatModal('menu'); }
+function addExpenseCat(){ openCatModal('expense'); }
+function addIncomeCat(){ openCatModal('income'); }
+
+function catStore(type){
+  return type==='ing'?state.ingCats:type==='menu'?state.menuCats:type==='expense'?state.expenseCats:state.incomeCats;
+}
+function catSelectId(type){
+  return type==='ing'?'ingCat':type==='menu'?'menuCat':type==='expense'?'expCat':'incCat';
+}
+function openCatModal(type){
+  _catCtx={type};
+  const emojiPool = type==='ing'?ING_EMOJIS:EMOJI_SET;
+  const emojiBtns=emojiPool.slice(0,24).map((em,i)=>`<button class="emoji-opt ${i===0?'on':''}" onclick="pickCatEmoji(this,'${em}')">${em}</button>`).join('');
+  // ລາຍການປະເພດປັດຈຸບັນ ພ້ອມປຸ່ມລຶບ
+  const existing=catStore(type).map(c=>`<div class="saved-name-chip" style="cursor:default">${c.emoji} ${esc(c.name)} <span onclick="deleteCat('${type}','${c.id}')" style="margin-left:4px;color:var(--danger-deep);font-weight:800;cursor:pointer">✕</span></div>`).join('');
+  const html=`<div class="modal-back" style="z-index:250" onclick="if(event.target===this)closeCatModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ຈັດການປະເພດ</h3><p class="msub">ເພີ່ມ ຫຼື ລຶບ ໝວດໝູ່ ບໍ່ຈຳກັດ</p>
+    <div class="fg full" style="margin-bottom:16px"><label>ປະເພດປັດຈຸບັນ (ກົດ ✕ ເພື່ອລຶບ)</label><div class="saved-names">${existing}</div></div>
+    <div class="divider-lbl" style="margin:6px 0 12px">ເພີ່ມປະເພດໃໝ່</div>
+    <input type="hidden" id="catEmoji" value="${emojiPool[0]}">
+    <div class="fg full" style="margin-bottom:14px"><label>ໄອຄອນ</label><div class="emoji-pick" style="max-height:130px;overflow-y:auto">${emojiBtns}</div></div>
+    <div class="fg full"><label>ຊື່ປະເພດ</label><input type="text" id="catName" placeholder="ເຊັ່ນ ນ້ຳປັ່ນ"></div>
+    <button class="btn-save" onclick="saveNewCat()">ບັນທຶກປະເພດໃໝ່</button>
+    <button class="btn-ghost" onclick="closeCatModal()">ປິດ</button>
+  </div></div>`;
+  const wrap=document.createElement('div'); wrap.id='catModalRoot'; wrap.innerHTML=html;
+  document.body.appendChild(wrap);
+}
+function catInUse(type,id){
+  if(type==='menu') return state.menu.some(m=>(m.category||'drink')===id);
+  if(type==='ing') return state.ingredients.some(i=>i.category===id);
+  if(type==='expense') return state.expenses.some(e=>e.category===id);
+  if(type==='income') return state.incomes.some(i=>i.category===id);
+  return false;
+}
+function deleteCat(type,id){
+  const store=catStore(type);
+  if(store.length<=1){ toast('ຕ້ອງມີຢ່າງໜ້ອຍ 1 ປະເພດ',true); return; }
+  if(catInUse(type,id)){ toast('ປະເພດນີ້ຖືກໃຊ້ຢູ່ ລຶບບໍ່ໄດ້',true); return; }
+  const idx=store.findIndex(c=>c.id===id);
+  if(idx>=0){ store.splice(idx,1); save(); }
+  closeCatModal(); openCatModal(type); // reopen to refresh list
+  toast('ລຶບປະເພດແລ້ວ');
+}
+function pickCatEmoji(btn,em){
+  btn.parentElement.querySelectorAll('.emoji-opt').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on'); $('catEmoji').value=em;
+}
+function closeCatModal(){ const w=$('catModalRoot'); if(w)w.remove(); _catCtx=null; }
+function saveNewCat(){
+  const name=$('catName').value.trim();
+  if(!name){ toast('ໃສ່ຊື່ປະເພດ',true); return; }
+  const emoji=$('catEmoji').value;
+  const type=_catCtx.type;
+  const store=catStore(type);
+  const id='c'+Date.now();
+  store.push({id,name,emoji});
+  save();
+  // add the new option to the underlying select and select it
+  const sel=$(catSelectId(type));
+  if(sel){
+    const opt=document.createElement('option');
+    opt.value=id; opt.textContent=emoji+' '+name; opt.selected=true;
+    sel.appendChild(opt);
+  }
+  closeCatModal();
+  toast('ເພີ່ມປະເພດ "'+name+'" ແລ້ວ');
+}
+
+/* ============================================================
+   PAGE: MENU (Recipe/BOM builder + costing + margin + shop settings)
+   ============================================================ */
+function renderMenu(){
+  // group menu by category
+  let sections='';
+  state.menuCats.forEach(cat=>{
+    const items=state.menu.filter(m=>(m.category||'drink')===cat.id);
+    if(items.length===0)return;
+    const rows=items.map(m=>{
+      const tc=totalCost(m); const margin=m.price-tc;
+      const mPct=m.price>0?Math.round(margin/m.price*100):0;
+      const ic=m.img?`<img src="${m.img}" alt="">`:`<span style="font-size:24px">${m.emoji}</span>`;
+      const ingCount=(m.recipe||[]).length;
+      return `<div class="list-item">
+        <div class="li-ico" style="background:var(--pastel-mint)">${ic}</div>
+        <div class="li-body" onclick="editMenu('${m.id}')">
+          <div class="li-t">${esc(m.name)} <span class="chip cat">${ingCount} ສ່ວນປະສົມ</span></div>
+          <div class="li-s">ຂາຍ ${fmt(m.price)} · ທຶນ ${fmt(tc)} · ກຳໄລ <b style="color:var(--teal-deep)">${fmt(margin)} (${mPct}%)</b></div>
+        </div>
+        <button class="del-x" onclick="deleteMenu('${m.id}')">🗑</button>
+      </div>`;
+    }).join('');
+    sections+=`<div class="divider-lbl">${cat.emoji} ${cat.name}</div>${rows}`;
+  });
+  if(!sections)sections=`<div class="tiny-note" style="padding:20px">ຍັງບໍ່ມີເມນູ ກົດປຸ່ມຂ້າງເທິງເພື່ອເພີ່ມ</div>`;
+
+  const s=state.shop;
+  const logoInner=s.logo?`<img src="${s.logo}" alt="">`:'🏪';
+  return `<div class="page">
+    <div class="sec-head"><h2>ຈັດການເມນູ</h2><p>ຕັ້ງສູດ ຄິດຕົ້ນທຶນ ແລະ ລາຄາຂາຍ</p></div>
+    <button class="add-btn-row" onclick="addMenu()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>ເພີ່ມເມນູໃໝ່</button>
+    ${sections}
+
+    <div class="divider-lbl">⚙️ ຕັ້ງຄ່າຮ້ານ / ຂໍ້ມູນໃບບິນ</div>
+    <div class="card">
+      <div class="fg full" style="margin-bottom:14px"><label>ໂລໂກ້ຮ້ານ (ສະແດງເທິງໃບບິນ)</label>
+        <div class="logo-upload">
+          <div class="logo-circle" id="shopLogoPrev">${logoInner}</div>
+          <div class="lu-btns">
+            <button class="lu-btn" onclick="pickLogo()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>ອັບໂຫຼດໂລໂກ້</button>
+            ${s.logo?`<button class="lu-rm" onclick="removeLogo()">ລຶບໂລໂກ້</button>`:''}
+          </div>
+        </div>
+      </div>
+      <div class="fg full" style="margin-bottom:14px"><label>ຊື່ຮ້ານ</label><input type="text" id="shopName" value="${esc(s.name)}" placeholder="ຮ້ານເຄື່ອງດື່ມ"></div>
+      <div class="form-grid" style="margin-bottom:14px">
+        <div class="fg"><label>ບ້ານ</label><input type="text" id="shopVillage" value="${esc(s.village)}" placeholder="ບ້ານ..."></div>
+        <div class="fg"><label>ເມືອງ</label><input type="text" id="shopDistrict" value="${esc(s.district)}" placeholder="ເມືອງ..."></div>
+      </div>
+      <div class="form-grid" style="margin-bottom:14px">
+        <div class="fg"><label>ແຂວງ</label><input type="text" id="shopProvince" value="${esc(s.province)}" placeholder="ແຂວງ..."></div>
+        <div class="fg"><label>ເສັ້ນທາງ / ຖະໜົນ</label><input type="text" id="shopRoad" value="${esc(s.road)}" placeholder="ເສັ້ນທາງ..."></div>
+      </div>
+      <div class="fg full" style="margin-bottom:14px"><label>ຄ່າໃຊ້ຈ່າຍແຝງເລີ່ມຕົ້ນ (Overhead) — ຄ່ານ້ຳ ຄ່າໄຟ ຄ່າແຮງ</label>
+        <div class="unit-in"><input type="number" id="shopOverhead" value="${s.overheadPct}" inputmode="numeric" min="0"><span class="u">%</span></div>
+      </div>
+      <div class="fg full" style="margin-bottom:14px"><label>ຂໍ້ມູນເພີ່ມເຕີມ (ເບີໂທ, ເວລາເປີດ...)</label><textarea id="shopExtra" placeholder="ໂທ: 020 xxxx xxxx&#10;ເປີດ: 07:00 - 20:00">${esc(s.extra)}</textarea></div>
+      <div class="fg full" style="margin-bottom:4px"><label>QR ໂອນເງິນ (ສະແດງໃນໃບບິນ ໃຫ້ລູກຄ້າສະແກນຈ່າຍ)</label>
+        <div class="logo-upload">
+          <div class="logo-circle" id="shopQrPrev" style="border-radius:12px">${s.qr?`<img src="${s.qr}" alt="">`:'📱'}</div>
+          <div class="lu-btns">
+            <button class="lu-btn" onclick="pickQr()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="14" y1="21" x2="14" y2="21"/></svg>ອັບ QR ໂອນເງິນ</button>
+            ${s.qr?`<button class="lu-rm" onclick="removeQr()">ລຶບ QR</button>`:''}
+          </div>
+        </div>
+      </div>
+      <button class="btn-save" onclick="saveShop()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>ບັນທຶກຂໍ້ມູນຮ້ານ</button>
+    </div>
+
+    <div id="syncSection" class="divider-lbl">🔄 ຊິ້ງຫຼາຍເຄື່ອງ & ສຳຮອງຂໍ້ມູນ</div>
+    ${renderSyncPanel()}
+
+    <div class="divider-lbl">🔒 ລະຫັດເຂົ້າລະບົບ</div>
+    <div class="card">
+      <div class="fg full" style="margin-bottom:14px"><label>ຊື່ຜູ້ໃຊ້</label><input type="text" id="setUsername" value="${esc(state.user?state.user.name:'')}" placeholder="ຊື່ຜູ້ໃຊ້"></div>
+      <div class="fg full" style="margin-bottom:14px"><label>ລະຫັດຜ່ານໃໝ່ (ຢ່າງໜ້ອຍ 4 ຕົວ)</label><input type="password" id="setPass1" placeholder="ໃສ່ລະຫັດຜ່ານໃໝ່" autocomplete="new-password"></div>
+      <div class="fg full"><label>ຢືນຢັນລະຫັດຜ່ານໃໝ່ອີກຄັ້ງ</label><input type="password" id="setPass2" placeholder="ພິມລະຫັດຜ່ານຄືນ" autocomplete="new-password"></div>
+      <button class="btn-save" onclick="changeLogin()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>ບັນທຶກລະຫັດໃໝ່</button>
+      <div class="tiny-note">ຫຼັງບັນທຶກ ຄັ້ງໜ້າໃຫ້ໃຊ້ຊື່ ແລະ ລະຫັດໃໝ່ນີ້ເຂົ້າລະບົບ</div>
+    </div>
+  </div>`;
+}
+
+/* ---- ປ່ຽນລະຫັດເຂົ້າລະບົບ ---- */
+function changeLogin(){
+  const name=$('setUsername').value.trim();
+  const p1=$('setPass1').value;
+  const p2=$('setPass2').value;
+  if(!name){ toast('ໃສ່ຊື່ຜູ້ໃຊ້',true); return; }
+  if(!p1){ toast('ໃສ່ລະຫັດຜ່ານໃໝ່',true); return; }
+  if(p1.length<4){ toast('ລະຫັດຕ້ອງຢ່າງໜ້ອຍ 4 ຕົວ',true); return; }
+  if(p1!==p2){ toast('ລະຫັດຢືນຢັນບໍ່ຕົງກັນ',true); return; }
+  state.user={name,pass:p1};
+  DB.set('user',state.user);
+  $('setPass1').value=''; $('setPass2').value='';
+  toast('ບັນທຶກລະຫັດເຂົ້າລະບົບໃໝ່ແລ້ວ ✓');
+}
+
+/* ============================================================
+   SYNC PANEL (UI) — ສະຖານະ %, Cloud, Export/Import, ຊ່ອງໂວ່
+   ============================================================ */
+function renderSyncPanel(){
+  const H=SYNC.health();
+  const statusMap={local:['⚪','ໂໝດເຄື່ອງດຽວ (local\u00A0only)','#8899aa'],connecting:['🟡','ກຳລັງເຊື່ອມຕໍ່...','#E0A64C'],online:['🟢','ຊິ້ງ Cloud ຣຽວທາມ','#2FA8A0'],error:['🔴','Cloud ຜິດພາດ','#C1554F']};
+  const sm=statusMap[SYNC.status]||statusMap.local;
+  const barColor=H.pct>=80?'#2FA8A0':H.pct>=50?'#E0A64C':'#C1554F';
+  const checkRows=H.checks.map(c=>`<div style="display:flex;align-items:center;gap:9px;padding:8px 0;border-bottom:1px dashed var(--line)">
+    <span style="font-size:16px">${c.ok?'✅':(c.critical?'❌':'⚪')}</span>
+    <div style="flex:1"><div style="font-size:13px;font-weight:600">${c.name}</div>${c.detail?`<div style="font-size:11px;color:var(--ink-soft);margin-top:1px">${esc(c.detail)}</div>`:''}</div>
+  </div>`).join('');
+  const hasCfg=!!DB.get('fbConfig',null);
+  const storeId=DB.get('storeId','')||'';
+
+  let gapHtml='';
+  if(H.gaps.length>0){
+    gapHtml=`<div class="card" style="border:2px solid var(--warn);background:#FEF6EC">
+      <div class="card-title"><span class="dot" style="background:var(--warn)"></span>⚠️ ພົບຊ່ອງໂວ່ ${H.gaps.length} ຈຸດ</div>
+      <div style="max-height:140px;overflow-y:auto;margin-bottom:10px">${H.gaps.map(g=>`<div style="font-size:12px;color:#96552F;padding:4px 0">• ${g.msg}</div>`).join('')}</div>
+      <button class="btn-save" style="background:linear-gradient(135deg,#E0A64C,#C1854C);margin-top:0" onclick="doRepairGaps()">🛠️ ແກ້ໄຂອັດຕະໂນມັດທັນທີ</button>
+    </div>`;
+  } else {
+    gapHtml=`<div class="card" style="border:1.5px solid var(--pastel-mint)"><div style="display:flex;align-items:center;gap:10px"><span style="font-size:22px">✅</span><div><div style="font-size:14px;font-weight:700">ຂໍ້ມູນຄົບຖ້ວນ ບໍ່ມີຊ່ອງໂວ່</div><div style="font-size:12px;color:var(--ink-soft)">ລະບົບກວດແລ້ວ ທຸກຢ່າງປົກກະຕິ</div></div></div></div>`;
+  }
+
+  return `
+    <div class="card">
+      <div style="text-align:center;padding:6px 0 14px">
+        <div style="font-size:13px;color:var(--ink-soft);font-weight:600">ຄວາມພ້ອມໃຊ້ງານ</div>
+        <div style="font-size:40px;font-weight:800;color:${barColor};line-height:1.1;margin:4px 0">${H.pct}%</div>
+        <div style="height:12px;background:#EAF6F6;border-radius:8px;overflow:hidden;margin:8px 4px 0"><div style="height:100%;width:${H.pct}%;background:${barColor};border-radius:8px;transition:width .6s"></div></div>
+      </div>
+      <div style="display:flex;align-items:center;justify-content:center;gap:8px;padding:10px;background:#F4FAFA;border-radius:12px;margin-bottom:6px">
+        <span style="font-size:14px">${sm[0]}</span><span style="font-size:13.5px;font-weight:700;color:${sm[2]}">${sm[1]}</span>
+      </div>
+      ${SYNC.status==='error'?`<div class="tiny-note" style="color:var(--danger-deep);text-align:left">ຂໍ້ຄວາມຜິດພາດ: ${esc(SYNC.lastError)}</div>`:''}
+      <div style="margin-top:12px">${checkRows}</div>
+    </div>
+
+    ${gapHtml}
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>💾 ສຳຮອງ & ກູ້ຂໍ້ມູນ (ໃຊ້ໄດ້ທຸກເຄື່ອງ)</div>
+      <div class="tiny-note" style="text-align:left;margin-top:0;margin-bottom:12px">ດາວໂຫຼດໄຟລ໌ສຳຮອງໄວ້ ຫຼື ສົ່ງໃຫ້ເຄື່ອງອື່ນເປີດ → ຂໍ້ມູນຄືກັນ. ໃຊ້ໄດ້ບໍ່ຕ້ອງອິນເຕີເນັດ.</div>
+      <div style="display:flex;gap:10px">
+        <button class="btn-save" style="margin-top:0;flex:1" onclick="exportData()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>ດາວໂຫຼດສຳຮອງ</button>
+        <button class="btn-save" style="margin-top:0;flex:1;background:linear-gradient(135deg,#5BA3D0,#3C7FA8)" onclick="triggerImport()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>ກູ້ / ອິມພອດ</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>☁️ ຊິ້ງ Cloud ຫຼາຍເຄື່ອງ (Firebase)</div>
+      <div class="tiny-note" style="text-align:left;margin-top:0;margin-bottom:12px">ໃສ່ຄ່າ config ຈາກ Firebase ຂອງທ່ານ → ທຸກເຄື່ອງທີ່ໃສ່ config ດຽວກັນ ຈະເຫັນຂໍ້ມູນຣຽວທາມ ພ້ອມກັນ ບໍ່ຕ້ອງສົ່ງໄຟລ໌.</div>
+      ${hasCfg?`
+        <div style="background:#F2FBFA;border:1.5px solid var(--pastel-mint);border-radius:12px;padding:12px;margin-bottom:12px">
+          <div style="font-size:13px;font-weight:700;color:var(--teal-deep)">✓ ຕັ້ງຄ່າ Cloud ແລ້ວ</div>
+          <div style="font-size:11.5px;color:var(--ink-soft);margin-top:3px">ລະຫັດຮ້ານ (storeId): <b>${esc(storeId)}</b><br>ໃສ່ storeId ດຽວກັນນີ້ໃນເຄື່ອງອື່ນເພື່ອຊິ້ງ</div>
+        </div>
+        <div style="display:flex;gap:10px">
+          <button class="btn-ghost" style="margin-top:0;flex:1" onclick="SYNC.pushCloud();toast('ສົ່ງຂຶ້ນ Cloud ແລ້ວ')">⬆️ ດັນຂຶ້ນດຽວນີ້</button>
+          <button class="btn-ghost" style="margin-top:0;flex:1;color:var(--danger-deep)" onclick="disconnectCloudUI()">ຕັດການເຊື່ອມຕໍ່</button>
+        </div>
+      `:`
+        <button class="btn-save" style="margin-top:0;background:linear-gradient(135deg,#8A7BC8,#6C5CB0)" onclick="openCloudSetup()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:18px;height:18px"><path d="M18 10h-1.26A8 8 0 1 0 9 20h9a5 5 0 0 0 0-10z"/></svg>ຕັ້ງຄ່າ Cloud ຊິ້ງ</button>
+      `}
+      <div class="tiny-note" style="margin-top:10px"><a onclick="showFirebaseGuide()" style="color:var(--teal-deep);font-weight:700;cursor:pointer">📖 ວິທີເອົາ config ຈາກ Firebase (ຟຣີ)</a></div>
+    </div>
+  `;
+}
+
+function doRepairGaps(){
+  const n=repairGaps();
+  toast(n>0?('ແກ້ໄຂ '+n+' ຈຸດແລ້ວ ✓'):'ບໍ່ມີຫຍັງໃຫ້ແກ້');
+}
+function triggerImport(){
+  const inp=$('fileImport'); inp.value='';
+  inp.onchange=function(){ const f=inp.files[0]; if(f) confirmImport(f); };
+  inp.click();
+}
+function confirmImport(file){
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ກູ້ / ອິມພອດຂໍ້ມູນ?</h3>
+    <p class="msub">ຈະທັບຂໍ້ມູນປັດຈຸບັນດ້ວຍໄຟລ໌ "${esc(file.name)}". ແນະນຳໃຫ້ດາວໂຫຼດສຳຮອງປັດຈຸບັນໄວ້ກ່ອນ. ດຳເນີນຕໍ່ບໍ່?</p>
+    <button class="btn-save" onclick="doImport()">ກູ້ຂໍ້ມູນ</button>
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  window._pendingImport=file;
+  $('modalRoot').innerHTML=html;
+}
+function doImport(){ if(window._pendingImport){ importDataFile(window._pendingImport); window._pendingImport=null; } }
+
+function openCloudSetup(){
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ຕັ້ງຄ່າ Cloud ຊິ້ງ</h3>
+    <p class="msub">ວາງ (paste) ຄ່າ firebaseConfig ຈາກ Firebase Console ຂອງທ່ານລົງຂ້າງລຸ່ມ</p>
+    <div class="fg full" style="margin-bottom:14px"><label>Firebase Config (JSON ຫຼື object)</label>
+      <textarea id="fbCfgInput" style="min-height:150px;font-family:monospace;font-size:12px" placeholder='{
+  "apiKey": "AIza....",
+  "authDomain": "xxx.firebaseapp.com",
+  "projectId": "xxx",
+  "storageBucket": "xxx.appspot.com",
+  "messagingSenderId": "123",
+  "appId": "1:123:web:abc"
+}'></textarea></div>
+    <div class="fg full" style="margin-bottom:6px"><label>ລະຫັດຮ້ານ (storeId) — ໃສ່ຄືກັນທຸກເຄື່ອງ</label>
+      <input type="text" id="fbStoreId" value="${esc(DB.get('storeId','')||'')}" placeholder="ເຊັ່ນ myshop-01"></div>
+    <div class="tiny-note" style="text-align:left;margin-bottom:12px">💡 storeId ຄືກຸນແຈຮ້ານ — ເຄື່ອງໃດໃສ່ storeId ດຽວກັນ + config ດຽວກັນ ຈະຊິ້ງຂໍ້ມູນຮ່ວມກັນ</div>
+    <button class="btn-save" onclick="saveCloudConfig()">🔗 ເຊື່ອມຕໍ່ Cloud</button>
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+async function saveCloudConfig(){
+  let raw=$('fbCfgInput').value.trim();
+  if(!raw){ toast('ວາງ config ກ່ອນ',true); return; }
+  let cfg;
+  try{
+    // ດຶງສະເພາະ object { ... } ອອກມາ (ຕັດ "const firebaseConfig =" ຫຼື ";" ຮອບນອກ)
+    const first=raw.indexOf('{'); const last=raw.lastIndexOf('}');
+    if(first>=0 && last>first) raw=raw.slice(first,last+1);
+    // ຮັບໄດ້ທັງ JSON ແທ້ ຫຼື object ແບບ JS (key ບໍ່ມີ quote)
+    try{ cfg=JSON.parse(raw); }
+    catch(_){ cfg=(new Function('return ('+raw+')'))(); }
+  }catch(e){ toast('config ບໍ່ຖືກຮູບແບບ ລອງໃໝ່',true); return; }
+  if(!cfg||!cfg.projectId||!cfg.apiKey){ toast('config ຂາດ projectId ຫຼື apiKey',true); return; }
+  const sid=$('fbStoreId').value.trim();
+  if(sid) DB.set('storeId',sid);
+  DB.set('fbConfig',cfg);
+  closeModal();
+  toast('ກຳລັງເຊື່ອມຕໍ່ Cloud...');
+  const okc=await SYNC.connectCloud(cfg);
+  refresh();
+  toast(okc?'ເຊື່ອມຕໍ່ Cloud ສຳເລັດ ✓':'ຕໍ່ Cloud ບໍ່ໄດ້: '+SYNC.lastError, !okc);
+}
+function disconnectCloudUI(){
+  SYNC.disconnectCloud();
+  DB.set('fbConfig',null);
+  refresh(); toast('ຕັດການເຊື່ອມຕໍ່ Cloud ແລ້ວ (ຂໍ້ມູນຍັງຢູ່ໃນເຄື່ອງ)');
+}
+function showFirebaseGuide(){
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>📖 ວິທີເອົາ Firebase Config (ຟຣີ)</h3>
+    <p class="msub">ເຮັດຄັ້ງດຽວ ໃຊ້ໄດ້ຕະຫຼອດ</p>
+    <div style="font-size:13.5px;line-height:1.9;color:var(--ink)">
+      <div style="margin-bottom:10px"><b>1.</b> ໄປທີ່ <b>console.firebase.google.com</b> ເຂົ້າດ້ວຍ Gmail</div>
+      <div style="margin-bottom:10px"><b>2.</b> ກົດ <b>Add project</b> → ຕັ້ງຊື່ (ເຊັ່ນ myshop) → ສ້າງ</div>
+      <div style="margin-bottom:10px"><b>3.</b> ເມນູຊ້າຍ → <b>Build → Firestore Database</b> → <b>Create database</b> → ເລືອກ <b>Start in test mode</b> → Enable</div>
+      <div style="margin-bottom:10px"><b>4.</b> ກົດຮູບເຟືອງ ⚙️ → <b>Project settings</b> → ເລື່ອນລົງຫາ <b>Your apps</b> → ກົດ <b>Web &lt;/&gt;</b></div>
+      <div style="margin-bottom:10px"><b>5.</b> ຕັ້ງຊື່ app → Register → ຈະເຫັນ <b>firebaseConfig = { ... }</b></div>
+      <div style="margin-bottom:10px"><b>6.</b> ກ໋ອບປີ້ສ່ວນ <b>{ apiKey... appId }</b> ມາວາງໃນຊ່ອງຕັ້ງຄ່າ Cloud</div>
+      <div style="background:#FEF6EC;border-radius:10px;padding:12px;margin-top:12px;font-size:12.5px;color:#96552F"><b>ໝາຍເຫດ:</b> test mode ໃຊ້ໄດ້ 30 ວັນ. ຫຼັງຈາກນັ້ນ ໄປທີ່ Firestore → Rules ປ່ຽນ <code>allow read, write: if true;</code> (ຫຼື ຕັ້ງລະບົບ auth ພາຍຫຼັງ)</div>
+    </div>
+    <button class="btn-save" onclick="closeModal();openCloudSetup()">ເຂົ້າໃຈແລ້ວ ໄປຕັ້ງຄ່າ</button>
+    <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function pickLogo(){
+  const inp=$('fileLogoImg'); inp.value='';
+  inp.onchange=function(){
+    const f=inp.files[0]; if(!f)return;
+    processImage(f,240,d=>{
+      state.shop.logo=d; DB.set('shop',state.shop);
+      const prev=$('shopLogoPrev'); if(prev)prev.innerHTML=`<img src="${d}" alt="">`;
+      updateTopbar(); toast('ອັບໂຫຼດໂລໂກ້ແລ້ວ');
+      if(currentPage==='menu')refresh();
+    });
+  };
+  inp.click();
+}
+function removeLogo(){
+  state.shop.logo=null; DB.set('shop',state.shop);
+  $('topLogo').innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`;
+  refresh(); toast('ລຶບໂລໂກ້ແລ້ວ');
+}
+function pickQr(){
+  const inp=$('fileQrImg'); inp.value='';
+  inp.onchange=function(){
+    const f=inp.files[0]; if(!f)return;
+    processImage(f,500,d=>{
+      state.shop.qr=d; DB.set('shop',state.shop);
+      const prev=$('shopQrPrev'); if(prev)prev.innerHTML=`<img src="${d}" alt="">`;
+      toast('ອັບ QR ໂອນເງິນແລ້ວ');
+      if(currentPage==='menu')refresh();
+    });
+  };
+  inp.click();
+}
+function removeQr(){ state.shop.qr=null; DB.set('shop',state.shop); refresh(); toast('ລຶບ QR ແລ້ວ'); }
+function saveShop(){
+  const name=$('shopName').value.trim();
+  if(!name){ toast('ກະລຸນາປ້ອນຊື່ຮ້ານ',true); return; }
+  state.shop.name=name;
+  state.shop.village=$('shopVillage').value.trim();
+  state.shop.district=$('shopDistrict').value.trim();
+  state.shop.province=$('shopProvince').value.trim();
+  state.shop.road=$('shopRoad').value.trim();
+  state.shop.extra=$('shopExtra').value.trim();
+  state.shop.overheadPct=Math.max(0,parseFloat($('shopOverhead').value)||0);
+  DB.set('shop',state.shop); updateTopbar(); toast('ບັນທຶກຂໍ້ມູນຮ້ານແລ້ວ');
+}
+
+/* ---- Menu form with recipe builder ---- */
+let menuDraft=null;  // {img, recipe:[{ingredientId,amount}], margin}
+function addMenu(){ menuDraft={img:null,recipe:[],margin:null}; menuForm(null); }
+function editMenu(id){ const m=state.menu.find(x=>x.id===id); menuDraft={img:m?m.img:null,recipe:m?(m.recipe||[]).map(r=>({...r})):[],margin:null}; menuForm(m); }
+
+function menuForm(item){
+  const isEdit=!!item;
+  if(!menuDraft){ menuDraft={img:item?item.img:null,recipe:item?(item.recipe||[]).map(r=>({...r})):[],margin:null}; }
+  const e=item||{name:'',emoji:'🥤',category:'drink',price:0,overridePct:null};
+  const emojiBtns=EMOJI_SET.map(em=>`<button class="emoji-opt ${e.emoji===em?'on':''}" onclick="pickEmoji(this,'menuEmoji','${em}')">${em}</button>`).join('');
+  const catOpts=state.menuCats.map(c=>`<option value="${c.id}" ${(e.category||'drink')===c.id?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('');
+  const chips=state.savedNames.map((sn,idx)=>`<button class="saved-name-chip" onclick="applySavedName(${idx})"><span class="snc-em">${sn.emoji}</span>${esc(sn.name)}</button>`).join('');
+  const ohVal = e.overridePct!=null ? e.overridePct : state.shop.overheadPct;
+
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>${isEdit?'ແກ້ໄຂເມນູ':'ເພີ່ມເມນູໃໝ່'}</h3>
+    <p class="msub">ອັບຮູບ ຕັ້ງສູດ ຄິດຕົ້ນທຶນ ແລະ ລາຄາຂາຍ</p>
+    <input type="hidden" id="menuEmoji" value="${e.emoji}">
+
+    <div class="fg full" style="margin-bottom:14px"><label>ຮູບເມນູ (ຈະສະແດງໜ້າຂາຍ)</label><div id="menuImgZone">${menuImgZoneHtml()}</div></div>
+
+    <div class="fg full" style="margin-bottom:14px"><label>ຊື່ສູດ / ເມນູ</label>
+      <input type="text" id="menuName" value="${esc(e.name)}" placeholder="ເຊັ່ນ ຊາໄທເຢັນ">
+      <div class="saved-names">${chips}</div>
+      <div class="saved-hint">💡 ແຕະຊື່ທີ່ບັນທຶກໄວ້ ຫຼື ພິມໃໝ່ແລ້ວກົດ "ບັນທຶກຊື່"</div>
+      <button class="btn-ghost" style="margin-top:10px" onclick="saveCurrentName()">＋ ບັນທຶກຊື່ນີ້ໄວ້ໃຊ້ຄັ້ງໜ້າ</button>
+    </div>
+
+    <div class="fg full" style="margin-bottom:14px"><label>ປະເພດ</label>
+      <div style="display:flex;gap:8px"><select id="menuCat" style="flex:1">${catOpts}</select>
+      <button class="lu-btn" style="padding:0 16px;white-space:nowrap" onclick="addMenuCat()">＋ ໃໝ່</button></div>
+    </div>
+    <div class="fg full" style="margin-bottom:14px"><label>ໄອຄອນ (ເມື່ອບໍ່ມີຮູບ) <span id="emojiPreview" style="font-size:22px">${e.emoji}</span></label><div class="emoji-pick" style="max-height:150px;overflow-y:auto">${emojiBtns}</div></div>
+
+    <div class="divider-lbl">🧪 ສູດ (ສ່ວນປະສົມ) — ດຶງຕົ້ນທຶນຈາກສາງ</div>
+    <div class="recipe-box">
+      <div id="recipeRows">${renderRecipeRows()}</div>
+      <button class="add-ing-btn" onclick="addRecipeRow()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>ເພີ່ມສ່ວນປະສົມ</button>
+    </div>
+
+    <div class="fg full" style="margin-top:14px;margin-bottom:0"><label>ຄ່າໃຊ້ຈ່າຍແຝງ (Overhead) ສະເພາະເມນູນີ້</label>
+      <div class="unit-in"><input type="number" id="menuOverhead" value="${ohVal}" inputmode="numeric" min="0" oninput="recalcMenu()"><span class="u">%</span></div>
+      <div class="saved-hint">ຄ່າເລີ່ມຕົ້ນຈາກຮ້ານ = ${state.shop.overheadPct}% (ປັບສະເພາະເມນູນີ້ໄດ້)</div>
+    </div>
+
+    <div class="calc-preview" id="menuCostPrev"></div>
+
+    <div class="divider-lbl">💰 ເລືອກ % ກຳໄລ → ລາຄາຂາຍແນະນຳ</div>
+    <div class="margin-btns" id="marginBtns">
+      ${[10,20,30,50,70].map(p=>`<button class="margin-btn" data-m="${p}" onclick="pickMargin(${p})">${p}%</button>`).join('')}
+    </div>
+    <div id="suggestBox"></div>
+
+    <div class="fg full" style="margin-top:16px"><label>ລາຄາຂາຍຈິງ (ພິມເອງ ຫຼື ໃຊ້ລາຄາແນະນຳ)</label>
+      <div class="unit-in"><input type="number" id="menuPrice" value="${e.price}" inputmode="numeric" oninput="recalcMenu()"><span class="u">ກີບ</span></div>
+    </div>
+
+    <button class="btn-save" onclick="saveMenu('${item?item.id:''}')"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>${isEdit?'ບັນທຶກ':'ເພີ່ມເມນູ'}</button>
+    ${isEdit?`<button class="btn-ghost" style="color:var(--danger-deep)" onclick="deleteMenu('${item.id}')">🗑️ ລຶບເມນູນີ້</button>`:''}
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+  recalcMenu();
+}
+
+function menuImgZoneHtml(){
+  if(menuDraft && menuDraft.img){
+    return `<div class="img-preview"><img src="${menuDraft.img}" alt=""><button class="ip-remove" onclick="clearMenuImg()">✕</button><button class="ip-change" onclick="pickMenuImg()">ປ່ຽນຮູບ</button></div>`;
+  }
+  return `<div class="img-upload" onclick="pickMenuImg()"><div class="iu-ico">📷</div><div class="iu-t">ແຕະເພື່ອອັບຮູບເມນູ</div><div class="iu-s">ຖ່າຍ ຫຼື ເລືອກຈາກຄັງພາບ (ຮູບລວງສູງ)</div></div>`;
+}
+function pickMenuImg(){
+  const inp=$('fileMenuImg'); inp.value='';
+  inp.onchange=function(){
+    const f=inp.files[0]; if(!f)return;
+    processImage(f,700,d=>{ menuDraft.img=d; const z=$('menuImgZone'); if(z)z.innerHTML=menuImgZoneHtml(); toast('ເພີ່ມຮູບແລ້ວ'); });
+  };
+  inp.click();
+}
+function clearMenuImg(){ menuDraft.img=null; const z=$('menuImgZone'); if(z)z.innerHTML=menuImgZoneHtml(); }
+
+/* recipe rows */
+function renderRecipeRows(){
+  if(!menuDraft.recipe.length) return `<div class="recipe-empty">ຍັງບໍ່ມີສ່ວນປະສົມ — ກົດ "ເພີ່ມສ່ວນປະສົມ" ຂ້າງລຸ່ມ</div>`;
+  return menuDraft.recipe.map((r,idx)=>{
+    const opts=state.ingredients.map(ing=>`<option value="${ing.id}" ${r.ingredientId===ing.id?'selected':''}>${ing.emoji} ${esc(ing.name)}</option>`).join('');
+    const ing=findIng(r.ingredientId);
+    const bu=ing?ing.baseUnit:'';
+    const lineCost=ing?(r.amount||0)*costPerBase(ing):0;
+    return `<div class="recipe-row">
+      <select onchange="setRecipeIng(${idx},this.value)">${opts}</select>
+      <div class="amt-wrap"><input type="number" value="${r.amount||0}" min="0" inputmode="numeric" oninput="setRecipeAmt(${idx},this.value)"><span class="amt-u">${esc(bu)}</span></div>
+      <button class="rm-ing" onclick="removeRecipeRow(${idx})">✕</button>
+      <div class="ing-cost">= ${fmt(lineCost)} ກີບ</div>
+    </div>`;
+  }).join('');
+}
+function addRecipeRow(){
+  if(state.ingredients.length===0){ toast('ໄປເພີ່ມວັດຖຸດິບໃນສາງກ່ອນ',true); return; }
+  menuDraft.recipe.push({ingredientId:state.ingredients[0].id, amount:0});
+  const z=$('recipeRows'); if(z)z.innerHTML=renderRecipeRows();
+  recalcMenu();
+}
+function removeRecipeRow(idx){ menuDraft.recipe.splice(idx,1); const z=$('recipeRows'); if(z)z.innerHTML=renderRecipeRows(); recalcMenu(); }
+function setRecipeIng(idx,val){ menuDraft.recipe[idx].ingredientId=val; const z=$('recipeRows'); if(z)z.innerHTML=renderRecipeRows(); recalcMenu(); }
+function setRecipeAmt(idx,val){ menuDraft.recipe[idx].amount=parseFloat(val)||0; recalcMenu(); updateRecipeLineCosts(); }
+function updateRecipeLineCosts(){
+  // update line cost labels without full re-render (keeps focus in the input)
+  const rows=document.querySelectorAll('#recipeRows .recipe-row');
+  rows.forEach((row,idx)=>{
+    const r=menuDraft.recipe[idx]; if(!r)return;
+    const ing=findIng(r.ingredientId);
+    const lineCost=ing?(r.amount||0)*costPerBase(ing):0;
+    const lbl=row.querySelector('.ing-cost'); if(lbl)lbl.textContent='= '+fmt(lineCost)+' ກີບ';
+  });
+}
+
+/* live recalc of material+overhead+total and suggested prices */
+function tempMenuItem(){
+  const oh=parseFloat($('menuOverhead')?$('menuOverhead').value:state.shop.overheadPct);
+  return {recipe:menuDraft.recipe, overridePct:isNaN(oh)?state.shop.overheadPct:oh};
+}
+function recalcMenu(){
+  const tmp=tempMenuItem();
+  const mat=materialCost(tmp);
+  const ohPct=overheadPctOf(tmp);
+  const oh=mat*ohPct/100;
+  const tc=mat+oh;
+  const p=$('menuCostPrev');
+  if(p)p.innerHTML=`
+    <div class="cp-row"><span class="cp-l">ຕົ້ນທຶນວັດຖຸດິບ (ຈາກສູດ)</span><span class="cp-v">${kip(mat)}</span></div>
+    <div class="cp-row"><span class="cp-l">ຄ່າໃຊ້ຈ່າຍແຝງ (${ohPct}%)</span><span class="cp-v">${kip(oh)}</span></div>
+    <div class="cp-row big"><span class="cp-l">ຕົ້ນທຶນລວມ/ຈອກ</span><span class="cp-v pos-margin">${kip(tc)}</span></div>`;
+  // suggested price for selected margin
+  const sb=$('suggestBox');
+  if(sb){
+    if(menuDraft.margin!=null){
+      const sp=tc*(1+menuDraft.margin/100);
+      sb.innerHTML=`<div class="suggested-price"><span class="sp-l">ລາຄາຂາຍແນະນຳ (ກຳໄລ ${menuDraft.margin}%)</span><span class="sp-v">${kip(sp)}</span></div>
+      <button class="use-price-btn" onclick="usePrice(${Math.round(sp)})">ໃຊ້ລາຄານີ້ (${fmt(sp)} ກີບ)</button>`;
+    } else {
+      sb.innerHTML='';
+    }
+  }
+  // current profit from actual price
+  const price=parseFloat($('menuPrice')?$('menuPrice').value:0)||0;
+  if(price>0 && p){
+    const margin=price-tc;
+    const mPct=Math.round(margin/price*100);
+    p.innerHTML+=`<div class="cp-row sub"><span class="cp-l">ລາຄາຂາຍປັດຈຸບັນ</span><span class="cp-v">${kip(price)}</span></div>
+    <div class="cp-row"><span class="cp-l">ກຳໄລຕໍ່ຈອກ</span><span class="cp-v ${margin>=0?'pos-margin':''}" ${margin<0?'style="color:var(--danger-deep)"':''}>${kip(margin)} (${mPct}%)</span></div>`;
+  }
+}
+function pickMargin(p){
+  menuDraft.margin=p;
+  document.querySelectorAll('#marginBtns .margin-btn').forEach(b=>b.classList.toggle('on',parseInt(b.dataset.m)===p));
+  recalcMenu();
+}
+function usePrice(v){ const el=$('menuPrice'); if(el){ el.value=v; } recalcMenu(); toast('ໃສ່ລາຄາ '+fmt(v)+' ກີບແລ້ວ'); }
+
+/* saved names */
+function applySavedName(idx){
+  const sn=state.savedNames[idx]; if(!sn)return;
+  $('menuName').value=sn.name; $('menuEmoji').value=sn.emoji;
+  document.querySelectorAll('.emoji-pick .emoji-opt').forEach(b=>b.classList.toggle('on',b.textContent===sn.emoji));
+  const pv=$('emojiPreview'); if(pv)pv.textContent=sn.emoji;
+  toast('ເລືອກ "'+sn.name+'"');
+}
+function saveCurrentName(){
+  const name=$('menuName').value.trim();
+  if(!name){ toast('ພິມຊື່ກ່ອນຈຶ່ງບັນທຶກ',true); return; }
+  const emoji=$('menuEmoji').value;
+  if(state.savedNames.some(sn=>sn.name===name)){ toast('ຊື່ນີ້ບັນທຶກໄວ້ແລ້ວ'); return; }
+  state.savedNames.push({name,emoji}); DB.set('savedNames',state.savedNames);
+  const zone=document.querySelector('.saved-names');
+  if(zone){ const idx=state.savedNames.length-1; zone.insertAdjacentHTML('beforeend',`<button class="saved-name-chip" onclick="applySavedName(${idx})"><span class="snc-em">${emoji}</span>${esc(name)}</button>`); }
+  toast('ບັນທຶກຊື່ "'+name+'" ແລ້ວ');
+}
+
+/* override emoji preview when picking */
+function pickEmoji(btn,hiddenId,em){
+  btn.parentElement.querySelectorAll('.emoji-opt').forEach(b=>b.classList.remove('on'));
+  btn.classList.add('on'); $(hiddenId).value=em;
+  if(hiddenId==='menuEmoji'){ const pv=$('emojiPreview'); if(pv)pv.textContent=em; }
+}
+
+function saveMenu(id){
+  const name=$('menuName').value.trim();
+  if(!name){ toast('ກະລຸນາປ້ອນຊື່ເມນູ',true); return; }
+  const price=parseFloat($('menuPrice').value)||0;
+  if(price<=0){ toast('ກະລຸນາປ້ອນລາຄາຂາຍ',true); return; }
+  // clean recipe: drop rows with amount 0 or missing ingredient
+  const recipe=menuDraft.recipe.filter(r=>r.ingredientId && (r.amount||0)>0).map(r=>({ingredientId:r.ingredientId,amount:r.amount}));
+  const oh=parseFloat($('menuOverhead').value);
+  const overridePct = (isNaN(oh)||oh===state.shop.overheadPct)?null:oh;
+  const data={name,emoji:$('menuEmoji').value,img:menuDraft.img||null,category:$('menuCat').value,price,recipe,overridePct};
+  if(id){ Object.assign(state.menu.find(m=>m.id===id),data); toast('ບັນທຶກເມນູແລ້ວ'); }
+  else{ state.menu.push({id:'m'+Date.now(),...data}); toast('ເພີ່ມເມນູໃໝ່ແລ້ວ'); }
+  if(!state.savedNames.some(sn=>sn.name===name)) state.savedNames.push({name,emoji:data.emoji});
+  save(); menuDraft=null; closeModal(); refresh();
+}
+function deleteMenu(id){
+  const item=state.menu.find(m=>m.id===id);
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ລຶບເມນູ?</h3>
+    <p class="msub">ຕ້ອງການລຶບ "${item.emoji} ${esc(item.name)}" ແທ້ບໍ່? ຂໍ້ມູນອໍເດີ້ເກົ່າຈະຍັງຢູ່</p>
+    <button class="btn-save" style="background:linear-gradient(135deg,#E57373,#C1554F)" onclick="confirmDeleteMenu('${id}')">ລຶບ</button>
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function confirmDeleteMenu(id){ state.menu=state.menu.filter(m=>m.id!==id); save(); closeModal(); refresh(); toast('ລຶບເມນູແລ້ວ'); }
+
+window.addEventListener('DOMContentLoaded',()=>{ if(!$('app').classList.contains('hidden'))updateTopbar(); });
+</script>
+</body>
+</html>
