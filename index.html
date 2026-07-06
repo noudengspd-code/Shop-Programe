@@ -142,6 +142,13 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .opt-btn:active{transform:scale(.97)}
 .opt-label{font-size:12.5px;font-weight:600;color:var(--ink-soft);margin:14px 0 6px;padding-left:2px}
 .total-row{display:flex;justify-content:space-between;align-items:center;margin-top:14px;padding-top:14px;border-top:2px solid var(--line)}
+.total-row.sub-line{margin-top:8px;padding-top:0;border-top:none}
+.total-row.sub-line .tl{font-size:13px;color:var(--ink-soft);font-weight:600}
+.tv-sub{font-size:14px;font-weight:700;color:var(--ink)}
+.disc-chips{display:flex;flex-wrap:wrap;gap:7px}
+.disc-chip{border:1.5px solid var(--line);background:#fff;border-radius:20px;padding:7px 13px;font-size:12.5px;font-weight:600;color:var(--ink);cursor:pointer;transition:all .15s;font-family:inherit}
+.disc-chip.on{background:var(--teal);border-color:var(--teal);color:#fff}
+.disc-chip.custom{border-style:dashed;color:var(--teal-deep)}
 .total-row .tl{font-size:15px;font-weight:600;color:var(--ink-soft)}
 .total-row .tv{font-size:26px;font-weight:800;color:var(--teal-deep)}
 .checkout-btn{width:100%;padding:17px;border-radius:15px;margin-top:14px;background:linear-gradient(135deg,var(--teal),var(--teal-deep));color:#fff;font-weight:800;font-size:17px;box-shadow:0 8px 22px rgba(47,168,160,.4);transition:transform .12s,opacity .15s;display:flex;align-items:center;justify-content:center;gap:9px}
@@ -480,8 +487,8 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
    ============================================================ */
 const LAO_MONTHS=['ມັງກອນ','ກຸມພາ','ມີນາ','ເມສາ','ພຶດສະພາ','ມິຖຸນາ','ກໍລະກົດ','ສິງຫາ','ກັນຍາ','ຕຸລາ','ພະຈິກ','ທັນວາ'];
 const EN_MONTHS=['January','February','March','April','May','June','July','August','September','October','November','December'];
-// ໄອຄອນເມນູ (ເພີ່ມໃຫ້ຫຼາຍຂຶ້ນ 36 ອັນ)
-const EMOJI_SET=['🥤','🧋','☕','🧃','🍵','🥛','🧉','🍹','🫖','🍶','🧊','🍺','🍽️','🍰','🍨','🍮','🧁','🍩','🍪','🥧','🍦','🍧','🥞','🧇','🍮','🍫','🍓','🥭','🍊','🍋','🍇','🍈','🥥','🍠','🍡','🧆'];
+// ໄອຄອນເມນູ (ເຄື່ອງດື່ມ + ອາຫານ + ປັ່ນ + ຂະໜົມ) — 70 ໄອຄອນ
+const EMOJI_SET=['🥤','🧋','☕','🧃','🍵','🥛','🧉','🍹','🫖','🍶','🧊','🍺','🍽️','🍰','🍨','🍮','🧁','🍩','🍪','🥧','🍦','🍧','🥞','🧇','🍫','🍓','🥭','🍊','🍋','🍇','🍈','🥥','🍠','🍡','🧆','🍜','🍲','🍛','🍚','🍙','🍱','🍝','🍕','🍔','🌭','🥪','🌮','🌯','🥙','🧀','🥗','🍗','🍖','🥩','🍤','🍳','🥘','🫕','🍢','🍥','🍌','🍉','🍍','🥝','🫐','🍑','🍒','🥑','🥕','🧅'];
 // ໄອຄອນວັດຖຸດິບ (ເພີ່ມໃໝ່ 20+ ອັນ)
 const ING_EMOJIS=['🍵','☕','🥛','🍯','🧊','🥤','🧋','📦','🫙','🍶','🧃','🥥','🍫','🍓','🥭','🍊','🍋','🍇','🫐','🍒','🥜','🌰','🧂','🧈','🥚','🍚','🫖','🧉','🍶','🍬','🍭','🧴'];
 
@@ -516,6 +523,13 @@ const DEFAULT_INCOME_CATS=[
   {id:'sale',name:'ຂາຍໜ້າຮ້ານ',emoji:'🛒'},
   {id:'other_income',name:'ລາຍຮັບອື່ນໆ',emoji:'💰'},
 ];
+// ລາຍການສ່ວນຫຼຸດສຳເລັດຮູບ (default — ເພີ່ມ/ແກ້ເອງໄດ້) · type: pct=%, fixed=ກີບ
+const DEFAULT_DISCOUNTS=[
+  {id:'d1',name:'ລູກຄ້າປະຈຳ',type:'pct',value:10},
+  {id:'d2',name:'ໂປຣໂມຊັນ',type:'pct',value:20},
+  {id:'d3',name:'ຫຼຸດ 5,000',type:'fixed',value:5000},
+  {id:'d4',name:'ຫຼຸດ 10,000',type:'fixed',value:10000},
+];
 
 const DB={
   get(k,def){ try{const v=localStorage.getItem('pos_'+k);return v?JSON.parse(v):def;}catch(e){return def;} },
@@ -535,7 +549,9 @@ let state={
   ingCats:DB.get('ingCats',null),          // ປະເພດວັດຖຸດິບ (ເພີ່ມເອງ)
   expenseCats:DB.get('expenseCats',null),  // ປະເພດລາຍຈ່າຍ (ເພີ່ມເອງ)
   incomeCats:DB.get('incomeCats',null),    // ປະເພດລາຍຮັບ (ເພີ່ມເອງ)
+  discountPresets:DB.get('discountPresets',null),  // ລາຍການສ່ວນຫຼຸດສຳເລັດຮູບ
   cart:{}, channel:'walkin', payment:'cash',
+  discount:{type:'none',value:0,reason:''},
   viewMonth:(new Date()).getMonth(), viewYear:(new Date()).getFullYear(),
   sellCat:'all',
 };
@@ -545,7 +561,7 @@ let state={
    ============================================================ */
 function seedDefaults(){
   if(!state.shop){
-    state.shop={name:'ຮ້ານເຄື່ອງດື່ມ',logo:null,village:'',district:'',province:'',road:'',extra:'',overheadPct:25};
+    state.shop={name:'ຮ້ານເຄື່ອງດື່ມ',logo:null,village:'',district:'',province:'',road:'',extra:'',overheadPct:25,qr:null,receiptFooter:'ຂອບໃຈທີ່ອຸດໜູນ 🙏\nໂຊກດີ ດື່ມແຊບໆ'};
     DB.set('shop',state.shop);
   }
   if(state.shop.overheadPct==null){ state.shop.overheadPct=25; DB.set('shop',state.shop); }
@@ -586,6 +602,7 @@ function seedDefaults(){
   if(!state.ingCats){ state.ingCats=DEFAULT_ING_CATS.map(c=>({...c})); DB.set('ingCats',state.ingCats); }
   if(!state.expenseCats){ state.expenseCats=DEFAULT_EXPENSE_CATS.map(c=>({...c})); DB.set('expenseCats',state.expenseCats); }
   if(!state.incomeCats){ state.incomeCats=DEFAULT_INCOME_CATS.map(c=>({...c})); DB.set('incomeCats',state.incomeCats); }
+  if(!state.discountPresets){ state.discountPresets=DEFAULT_DISCOUNTS.map(d=>({...d})); DB.set('discountPresets',state.discountPresets); }
 
   // ★ Migration: ຍ້າຍ ingredient ຈາກໂຄງສ້າງເກົ່າ (purchaseUnit/qtyPerPurchase) ມາໃໝ່ (unit/qtyPerUnit/used)
   let migrated=false;
@@ -597,6 +614,9 @@ function seedDefaults(){
     if(i.qtyPerUnit===undefined){ i.qtyPerUnit=1; migrated=true; }
   });
   if(migrated) DB.set('ingredients',state.ingredients);
+  // ★ Migration: shop ບໍ່ມີ receiptFooter/qr (ຜູ້ໃຊ້ເກົ່າ)
+  if(state.shop && state.shop.receiptFooter===undefined){ state.shop.receiptFooter='ຂອບໃຈທີ່ອຸດໜູນ 🙏\nໂຊກດີ ດື່ມແຊບໆ'; DB.set('shop',state.shop); }
+  if(state.shop && state.shop.qr===undefined){ state.shop.qr=null; DB.set('shop',state.shop); }
 }
 function save(){
   DB.set('menu',state.menu); DB.set('ingredients',state.ingredients);
@@ -605,6 +625,7 @@ function save(){
   DB.set('savedNames',state.savedNames);
   DB.set('menuCats',state.menuCats); DB.set('ingCats',state.ingCats);
   DB.set('expenseCats',state.expenseCats); DB.set('incomeCats',state.incomeCats);
+  DB.set('discountPresets',state.discountPresets);
   SYNC.markDirty();       // ★ ບອກ sync layer ວ່າຂໍ້ມູນປ່ຽນ → push ຂຶ້ນ cloud + ແຈ້ງແທັບອື່ນ
 }
 
@@ -615,7 +636,7 @@ function save(){
    2) Cross-tab (BroadcastChannel)— ຫຼາຍແທັບ/ໜ້າຕ່າງ ໃນເຄື່ອງດຽວ ຣຽວທາມ
    3) Cloud (Firebase Firestore)  — ຫຼາຍເຄື່ອງແທ້ ຣຽວທາມ (ຕ້ອງໃສ່ config)
    ============================================================ */
-const SYNC_KEYS=['shop','menu','ingredients','orders','expenses','incomes','savedNames','menuCats','ingCats','expenseCats','incomeCats'];
+const SYNC_KEYS=['shop','menu','ingredients','orders','expenses','incomes','savedNames','menuCats','ingCats','expenseCats','incomeCats','discountPresets'];
 
 /* ★ config Cloud ທີ່ຝັງໄວ້ໃນໄຟລ໌ (ຖ້າຕ້ອງການ hardcode) — ປົກກະຕິ null, ໃຊ້ share-link ແທນ */
 const EMBEDDED_FB_CONFIG=null;
@@ -830,7 +851,7 @@ function scanGaps(){
       if(o.total===undefined||!Array.isArray(o.items)) gaps.push({kind:'order_bad',id:o.id,msg:'ບິນ '+(o.no||'?')+': ໂຄງສ້າງຜິດ'});
     });
     // expense/income category ຫາຍ
-    (state.expenses||[]).forEach(e=>{ if(!state.expenseCats.find(c=>c.id===e.category)) gaps.push({kind:'exp_cat',id:e.id,msg:'ລາຍຈ່າຍ: ປະເພດຫາຍ'}); });
+    (state.expenses||[]).forEach(e=>{ if(e.category!=='_inventory' && !e.stockLink && !state.expenseCats.find(c=>c.id===e.category)) gaps.push({kind:'exp_cat',id:e.id,msg:'ລາຍຈ່າຍ: ປະເພດຫາຍ'}); });
     (state.incomes||[]).forEach(i=>{ if(!state.incomeCats.find(c=>c.id===i.category)) gaps.push({kind:'inc_cat',id:i.id,msg:'ລາຍຮັບ: ປະເພດຫາຍ'}); });
   }catch(e){ gaps.push({kind:'scan_err',msg:'ສະແກນຜິດພາດ: '+(e.message||e)}); }
   return gaps;
@@ -938,7 +959,10 @@ function inMonth(t,y,m){const d=new Date(t);return d.getFullYear()===y&&d.getMon
 function nextOrderNo(y,m){return state.orders.filter(o=>inMonth(o.time,y,m)).length+1;}
 function orderCode(o){const d=new Date(o.time);return EN_MONTHS[d.getMonth()]+'-'+String(o.no).padStart(3,'0');}
 function catInfo(id){return state.menuCats.find(c=>c.id===id)||state.menuCats[0];}
-function expCatInfo(id){return state.expenseCats.find(c=>c.id===id)||state.expenseCats[state.expenseCats.length-1];}
+function expCatInfo(id){
+  if(id==='_inventory') return {id:'_inventory',name:'ຊື້ເຂົ້າສາງ',emoji:'📦'};
+  return state.expenseCats.find(c=>c.id===id)||state.expenseCats[state.expenseCats.length-1];
+}
 function incCatInfo(id){return state.incomeCats.find(c=>c.id===id)||state.incomeCats[state.incomeCats.length-1];}
 
 /* ============================================================
@@ -1089,7 +1113,9 @@ function renderSell(){
         <button class="opt-btn ${state.payment==='transfer'?'on':''}" data-pay="transfer" onclick="setPayment('transfer')">🏦 ໂອນ</button>
         <button class="opt-btn ${state.payment==='pandapay'?'on':''}" data-pay="pandapay" onclick="setPayment('pandapay')">🛵 Panda</button>
       </div>
-      <div class="total-row"><span class="tl">ລວມທັງໝົດ</span><span class="tv" id="cartTotal">${kip(cartTotal())}</span></div>
+      <div class="opt-label">ສ່ວນຫຼຸດ</div>
+      <div id="discountArea">${renderDiscountArea()}</div>
+      <div id="totalArea">${renderTotalArea()}</div>
       <button class="checkout-btn" id="checkoutBtn" ${cartCount()===0?'disabled':''} onclick="checkout()">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
         ຢືນຢັນການຂາຍ
@@ -1101,7 +1127,14 @@ function setSellCat(c){ state.sellCat=c; refresh(); }
 
 function cartIds(){return Object.keys(state.cart).filter(id=>state.cart[id]>0);}
 function cartCount(){return cartIds().length;}
-function cartTotal(){return cartIds().reduce((s,id)=>{const m=state.menu.find(x=>x.id===id);return s+(m?m.price*state.cart[id]:0);},0);}
+function cartSubtotal(){return cartIds().reduce((s,id)=>{const m=state.menu.find(x=>x.id===id);return s+(m?m.price*state.cart[id]:0);},0);}
+function discountAmount(subtotal){
+  const d=state.discount||{type:'none',value:0};
+  if(d.type==='pct') return Math.round(subtotal*Math.min(100,Math.max(0,d.value))/100);
+  if(d.type==='fixed') return Math.min(subtotal,Math.max(0,d.value));
+  return 0;
+}
+function cartTotal(){ const sub=cartSubtotal(); return Math.max(0, sub-discountAmount(sub)); }
 function renderCartBody(){
   const ids=cartIds();
   if(ids.length===0)return `<div class="cart-empty"><span class="em">🛒</span>ຍັງບໍ່ມີລາຍການ<br>ແຕະຮູບເມນູຂ້າງເທິງເພື່ອເລີ່ມຂາຍ</div>`;
@@ -1121,8 +1154,79 @@ function updateTileBadge(id){
 }
 function updateCartArea(){
   const body=$('cartBody'); if(body)body.innerHTML=renderCartBody();
-  const tot=$('cartTotal'); if(tot)tot.textContent=kip(cartTotal());
+  const da=$('discountArea'); if(da)da.innerHTML=renderDiscountArea();
+  const ta=$('totalArea'); if(ta)ta.innerHTML=renderTotalArea();
   const btn=$('checkoutBtn'); if(btn)btn.disabled=cartCount()===0;
+}
+function renderDiscountArea(){
+  const d=state.discount||{type:'none',value:0,reason:''};
+  const chips=state.discountPresets.map(p=>{
+    const on=(d.type===p.type && d.value===p.value && d.reason===p.name);
+    const lbl=p.type==='pct'?p.value+'%':fmt(p.value);
+    return `<button class="disc-chip ${on?'on':''}" onclick="applyDiscountPreset('${p.id}')">${esc(p.name)} · ${lbl}</button>`;
+  }).join('');
+  const none=(d.type==='none')?'on':'';
+  return `<div class="disc-chips">
+    <button class="disc-chip ${none}" onclick="clearDiscount()">ບໍ່ຫຼຸດ</button>
+    ${chips}
+    <button class="disc-chip custom" onclick="openCustomDiscount()">✏️ ກຳນົດເອງ</button>
+  </div>`;
+}
+function renderTotalArea(){
+  const sub=cartSubtotal();
+  const disc=discountAmount(sub);
+  const d=state.discount||{type:'none'};
+  if(disc>0){
+    const dLabel=d.reason?d.reason:(d.type==='pct'?('ຫຼຸດ '+d.value+'%'):'ຫຼຸດ');
+    return `<div class="total-row sub-line"><span class="tl">ລວມຍ່ອຍ</span><span class="tv-sub">${kip(sub)}</span></div>
+      <div class="total-row sub-line disc"><span class="tl">${esc(dLabel)}</span><span class="tv-sub" style="color:var(--danger-deep)">−${kip(disc)}</span></div>
+      <div class="total-row"><span class="tl">ລວມທັງໝົດ</span><span class="tv" id="cartTotal">${kip(sub-disc)}</span></div>`;
+  }
+  return `<div class="total-row"><span class="tl">ລວມທັງໝົດ</span><span class="tv" id="cartTotal">${kip(sub)}</span></div>`;
+}
+function applyDiscountPreset(id){
+  const p=state.discountPresets.find(x=>x.id===id); if(!p)return;
+  state.discount={type:p.type,value:p.value,reason:p.name};
+  updateCartArea();
+}
+function clearDiscount(){ state.discount={type:'none',value:0,reason:''}; updateCartArea(); }
+function openCustomDiscount(){
+  const d=state.discount||{type:'pct',value:0};
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ສ່ວນຫຼຸດກຳນົດເອງ</h3><p class="msub">ເລືອກແບບ % ຫຼື ຈຳນວນເງິນ</p>
+    <div class="fg full" style="margin-bottom:14px"><label>ແບບສ່ວນຫຼຸດ</label>
+      <div class="opt-row" id="discTypeRow">
+        <button type="button" class="opt-btn ${d.type!=='fixed'?'on':''}" data-t="pct" onclick="setDiscType('pct')">% ເປີເຊັນ</button>
+        <button type="button" class="opt-btn ${d.type==='fixed'?'on':''}" data-t="fixed" onclick="setDiscType('fixed')">ກີບ ຈຳນວນເງິນ</button>
+      </div>
+      <input type="hidden" id="discType" value="${d.type==='fixed'?'fixed':'pct'}">
+    </div>
+    <div class="fg full" style="margin-bottom:14px"><label>ຈຳນວນ</label><div class="unit-in"><input type="number" id="discValue" value="${d.value||0}" inputmode="numeric" min="0"><span class="u" id="discUnit">${d.type==='fixed'?'ກີບ':'%'}</span></div></div>
+    <div class="fg full" style="margin-bottom:14px"><label>ເຫດຜົນ (ບໍ່ບັງຄັບ)</label><input type="text" id="discReason" value="${esc(d.reason||'')}" placeholder="ເຊັ່ນ ລູກຄ້າ VIP"></div>
+    <button class="btn-save" onclick="applyCustomDiscount()">ໃຊ້ສ່ວນຫຼຸດ</button>
+    <button class="btn-ghost" style="color:var(--teal-deep)" onclick="saveDiscountPreset()">＋ ບັນທຶກເປັນລາຍການສຳເລັດຮູບ</button>
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function setDiscType(t){ $('discType').value=t; document.querySelectorAll('#discTypeRow .opt-btn').forEach(b=>b.classList.toggle('on',b.dataset.t===t)); const u=$('discUnit'); if(u)u.textContent=t==='fixed'?'ກີບ':'%'; }
+function applyCustomDiscount(){
+  const type=$('discType').value;
+  const value=parseFloat($('discValue').value)||0;
+  const reason=$('discReason').value.trim();
+  if(value<=0){ toast('ໃສ່ຈຳນວນສ່ວນຫຼຸດ',true); return; }
+  if(type==='pct'&&value>100){ toast('ເປີເຊັນຫຼຸດເກີນ 100 ບໍ່ໄດ້',true); return; }
+  state.discount={type,value,reason};
+  closeModal(); updateCartArea(); toast('ໃສ່ສ່ວນຫຼຸດແລ້ວ');
+}
+function saveDiscountPreset(){
+  const type=$('discType').value;
+  const value=parseFloat($('discValue').value)||0;
+  const reason=$('discReason').value.trim()||(type==='pct'?('ຫຼຸດ '+value+'%'):('ຫຼຸດ '+fmt(value)));
+  if(value<=0){ toast('ໃສ່ຈຳນວນກ່ອນ',true); return; }
+  state.discountPresets.push({id:'d'+Date.now(),name:reason,type,value});
+  save(); state.discount={type,value,reason};
+  closeModal(); refresh(); toast('ບັນທຶກລາຍການສ່ວນຫຼຸດແລ້ວ');
 }
 function addToCart(id){ state.cart[id]=(state.cart[id]||0)+1; updateTileBadge(id); updateCartArea(); }
 function changeQty(id,d){ state.cart[id]=(state.cart[id]||0)+d; if(state.cart[id]<=0)delete state.cart[id]; updateTileBadge(id); updateCartArea(); }
@@ -1158,14 +1262,17 @@ function doCheckout(){
     const m=state.menu.find(x=>x.id===id);
     return {id,name:m.name,emoji:m.emoji,img:m.img||null,price:m.price,cost:Math.round(totalCost(m)),qty:state.cart[id],recipe:(m.recipe||[]).map(r=>({...r}))};
   });
-  const total=items.reduce((s,i)=>s+i.price*i.qty,0);
+  const subtotal=items.reduce((s,i)=>s+i.price*i.qty,0);
+  const disc=discountAmount(subtotal);
+  const total=Math.max(0,subtotal-disc);
   const totalCostSum=items.reduce((s,i)=>s+i.cost*i.qty,0);
+  const d=state.discount||{type:'none',value:0,reason:''};
   // ຕັດສະຕ໋ອກອັດຕະໂນມັດ
   items.forEach(it=>{ const m=state.menu.find(x=>x.id===it.id); deductStock(m,it.qty); });
   const now=new Date(); const no=nextOrderNo(now.getFullYear(),now.getMonth());
-  const order={id:'o'+Date.now(),no,time:now.toISOString(),items,total,cost:totalCostSum,profit:total-totalCostSum,channel:state.channel,payment:state.payment};
+  const order={id:'o'+Date.now(),no,time:now.toISOString(),items,subtotal,discount:disc,discountInfo:(disc>0?{type:d.type,value:d.value,reason:d.reason}:null),total,cost:totalCostSum,profit:total-totalCostSum,channel:state.channel,payment:state.payment};
   state.orders.unshift(order);
-  save(); state.cart={};
+  save(); state.cart={}; state.discount={type:'none',value:0,reason:''};
   showReceipt(order);
   toast('ຂາຍ '+orderCode(order)+' ສຳເລັດ · ຕັດສະຕ໋ອກແລ້ວ');
   refresh();
@@ -1198,10 +1305,12 @@ function showReceipt(order){
     <div class="receipt">
       <div class="receipt-head"><div class="rlogo">${logoHtml}</div><div class="rname">${esc(state.shop.name)}</div>${addrHtml}${extraHtml}<div class="rid">ເລກທີ ${orderCode(order)}</div><div class="rdate">${dateStr}</div></div>
       ${rows}
+      ${order.discount>0?`<div class="receipt-row" style="color:var(--ink-soft)"><span class="rq">ລວມຍ່ອຍ</span><span>${kip(order.subtotal||order.total+order.discount)}</span></div>
+      <div class="receipt-row" style="color:var(--danger-deep)"><span class="rq">${esc((order.discountInfo&&order.discountInfo.reason)||'ສ່ວນຫຼຸດ')}${order.discountInfo&&order.discountInfo.type==='pct'?' ('+order.discountInfo.value+'%)':''}</span><span>−${kip(order.discount)}</span></div>`:''}
       <div class="receipt-total"><span>ລວມ</span><span>${kip(order.total)}</span></div>
       <div class="receipt-meta">${chanChip}${payChip}</div>
       ${qrHtml}
-      <div class="receipt-foot">ຂອບໃຈທີ່ອຸດໜູນ 🙏<br>ໂຊກດີ ດື່ມແຊບໆ</div>
+      <div class="receipt-foot">${esc(state.shop.receiptFooter||'').replace(/\n/g,'<br>')}</div>
     </div>
     <button class="btn-save" onclick="printReceipt('${order.id}')"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>ພິມ / ບັນທຶກ PDF (A6)</button>
     <button class="btn-ghost" style="color:var(--danger-deep)" onclick="voidOrder('${order.id}')">🗑️ ຍົກເລີກບິນນີ້ (ຄືນສະຕ໋ອກ)</button>
@@ -1282,10 +1391,12 @@ function printReceipt(orderId){
   <div class="wrap">
     <div class="head">${logoHtml}<div class="name">${esc(state.shop.name)}</div>${addrHtml}${extraHtml}<div class="id">ເລກທີ ${orderCode(order)}</div><div class="dt">${dateStr}</div></div>
     <table><thead><tr><td class="ln">ລາຍການ</td><td class="qt">ຈຳນວນ</td><td class="rt">ລາຄາ</td></tr></thead><tbody>${rows}</tbody></table>
+    ${order.discount>0?`<div class="tot" style="font-size:3.6mm;font-weight:600;border-top:none;margin-top:2mm;padding-top:1mm"><span>ລວມຍ່ອຍ</span><span>${fmt(order.subtotal||order.total+order.discount)} ກີບ</span></div>
+    <div class="tot" style="font-size:3.6mm;font-weight:600;border-top:none;margin-top:0;padding-top:0"><span>${esc((order.discountInfo&&order.discountInfo.reason)||'ສ່ວນຫຼຸດ')}${order.discountInfo&&order.discountInfo.type==='pct'?' ('+order.discountInfo.value+'%)':''}</span><span>−${fmt(order.discount)} ກີບ</span></div>`:''}
     <div class="tot"><span>ລວມ</span><span>${fmt(order.total)}<span class="kip">ກີບ</span></span></div>
     <div class="meta">${chan} · ${pay}</div>
     ${qrBlock}
-    <div class="foot">ຂອບໃຈທີ່ອຸດໜູນ 🙏<br>ໂຊກດີ ດື່ມແຊບໆ</div>
+    <div class="foot">${esc(state.shop.receiptFooter||'').replace(/\n/g,'<br>')}</div>
   </div>
   <button class="pbtn" onclick="window.print()">🖨️ ພິມ / ບັນທຶກ PDF (A6)</button>
   <script>setTimeout(function(){window.print()},700);<\/script></body></html>`;
@@ -1304,10 +1415,20 @@ function financeData(y,mo){
   const saleIncome=orders.reduce((s,o)=>s+o.total,0);
   const otherIncome=incomes.reduce((s,i)=>s+i.amount,0);
   const totalIncome=saleIncome+otherIncome;
-  const incCost=orders.reduce((s,o)=>s+o.cost,0);
-  const expTotal=expenses.reduce((s,e)=>s+e.amount,0);
-  const netProfit=totalIncome-expTotal;
-  return {orders,expenses,incomes,saleIncome,otherIncome,totalIncome,incCost,expTotal,netProfit};
+  const incCost=orders.reduce((s,o)=>s+o.cost,0);          // COGS = ຕົ້ນທຶນວັດຖຸດິບທີ່ຂາຍ (ບໍລິໂພກ)
+  // ★ ແຍກ: ຊື້ເຂົ້າສາງ (inventory) ≠ ຄ່າໃຊ້ຈ່າຍດຳເນີນງານ (operating)
+  const invExpenses=expenses.filter(e=>e.stockLink);
+  const opExpenses=expenses.filter(e=>!e.stockLink);
+  const invTotal=invExpenses.reduce((s,e)=>s+e.amount,0);   // ເງິນຊື້ເຂົ້າສາງ (cash out, ເປັນຊັບສິນ)
+  const opTotal=opExpenses.reduce((s,e)=>s+e.amount,0);     // ຄ່າໃຊ້ຈ່າຍຈິງ (ຫັກກຳໄລ)
+  const expTotal=opTotal;                                    // "ລາຍຈ່າຍ" ໃນ P&L = ສະເພາະ operating
+  // ກຳໄລສຸດທິ (accrual, ຖືກຕ້ອງ) = ຍອດຂາຍ − COGS − operating (ບໍ່ນັບເງິນຊື້ສາງ ເພາະ COGS ຈັບແລ້ວ)
+  const grossProfit=totalIncome-incCost;
+  const netProfit=grossProfit-opTotal;
+  // ກະແສເງິນສົດ (cash flow) = ເງິນເຂົ້າ − ເງິນອອກທັງໝົດ (ລວມຊື້ສາງ)
+  const cashOut=opTotal+invTotal;
+  const cashFlow=totalIncome-cashOut;
+  return {orders,expenses,incomes,invExpenses,opExpenses,saleIncome,otherIncome,totalIncome,incCost,invTotal,opTotal,expTotal,grossProfit,netProfit,cashOut,cashFlow};
 }
 
 function renderFinance(){
@@ -1320,8 +1441,8 @@ function renderFinance(){
   D.incomes.forEach(i=>inBy[i.method]=(inBy[i.method]||0)+i.amount);
   const outBy={cash:0,transfer:0};
   D.expenses.forEach(e=>outBy[e.method]=(outBy[e.method]||0)+e.amount);
-  // ແຍກຕາມປະເພດ
-  const outCat={}; D.expenses.forEach(e=>outCat[e.category]=(outCat[e.category]||0)+e.amount);
+  // ແຍກຕາມປະເພດ (ສະເພາະ operating expense — ບໍ່ນັບຊື້ເຂົ້າສາງ)
+  const outCat={}; D.opExpenses.forEach(e=>outCat[e.category]=(outCat[e.category]||0)+e.amount);
   const inCat={}; D.incomes.forEach(i=>inCat[i.category]=(inCat[i.category]||0)+i.amount);
 
   let body='';
@@ -1330,17 +1451,29 @@ function renderFinance(){
     let incomeDetailRows=`<div class="cp-row"><span class="cp-l">🛒 ຂາຍໜ້າຮ້ານ (${D.orders.length} ບິນ)</span><span class="cp-v pos-margin">+${kip(D.saleIncome)}</span></div>`;
     state.incomeCats.forEach(c=>{ const v=inCat[c.id]||0; if(v>0) incomeDetailRows+=`<div class="cp-row"><span class="cp-l">${c.emoji} ${esc(c.name)}</span><span class="cp-v pos-margin">+${kip(v)}</span></div>`; });
 
-    // ລາຍລະອຽດລາຍຈ່າຍ: ແຍກແຕ່ລະປະເພດ
+    // ລາຍລະອຽດຄ່າໃຊ້ຈ່າຍດຳເນີນງານ (operating only)
     let expenseDetailRows='';
     state.expenseCats.forEach(c=>{ const v=outCat[c.id]||0; if(v>0) expenseDetailRows+=`<div class="cp-row"><span class="cp-l">${c.emoji} ${esc(c.name)}</span><span class="cp-v" style="color:var(--expense)">−${kip(v)}</span></div>`; });
-    if(!expenseDetailRows) expenseDetailRows=`<div class="cp-row"><span class="cp-l" style="color:var(--ink-soft)">ຍັງບໍ່ມີລາຍຈ່າຍ</span><span class="cp-v">0</span></div>`;
+    if(!expenseDetailRows) expenseDetailRows=`<div class="cp-row"><span class="cp-l" style="color:var(--ink-soft)">ຍັງບໍ່ມີຄ່າໃຊ້ຈ່າຍດຳເນີນງານ</span><span class="cp-v">0</span></div>`;
 
     body=`
     <div class="stat-grid">
-      <div class="stat mint"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#0E5551" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="lbl">ລາຍຮັບລວມ</div><div class="val">${fmt(D.totalIncome)} <small>ກີບ</small></div></div>
-      <div class="stat peach"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#B5651D" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div><div class="lbl">ລາຍຈ່າຍລວມ</div><div class="val">${fmt(D.expTotal)} <small>ກີບ</small></div></div>
+      <div class="stat mint"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#0E5551" stroke-width="2"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div class="lbl">ຍອດຂາຍລວມ</div><div class="val">${fmt(D.totalIncome)} <small>ກີບ</small></div></div>
+      <div class="stat peach"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#B5651D" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></div><div class="lbl">ຄ່າໃຊ້ຈ່າຍ+ຕົ້ນທຶນ</div><div class="val">${fmt(D.incCost+D.opTotal)} <small>ກີບ</small></div></div>
       <div class="stat ${D.netProfit>=0?'lav':'pink'}"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#5B4B9A" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div><div class="lbl">ກຳໄລສຸດທິ</div><div class="val">${fmt(D.netProfit)} <small>ກີບ</small></div></div>
       <div class="stat sky"><div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="#2C6E8F" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div><div class="lbl">ຈຳນວນບິນຂາຍ</div><div class="val">${D.orders.length}</div></div>
+    </div>
+
+    <div class="card">
+      <div class="card-title"><span class="dot"></span>📈 ສະຫຼຸບຜົນປະກອບການ (ຕາມຫຼັກບັນຊີ)</div>
+      <div class="calc-preview" style="margin-top:0">
+        <div class="cp-row"><span class="cp-l">ຍອດຂາຍ + ລາຍຮັບ</span><span class="cp-v pos-margin">+${kip(D.totalIncome)}</span></div>
+        <div class="cp-row"><span class="cp-l">− ຕົ້ນທຶນວັດຖຸດິບທີ່ຂາຍ (COGS)</span><span class="cp-v" style="color:var(--expense)">−${kip(D.incCost)}</span></div>
+        <div class="cp-row sub"><span class="cp-l">= ກຳໄລຂັ້ນຕົ້ນ</span><span class="cp-v">${kip(D.grossProfit)}</span></div>
+        <div class="cp-row"><span class="cp-l">− ຄ່າໃຊ້ຈ່າຍດຳເນີນງານ</span><span class="cp-v" style="color:var(--expense)">−${kip(D.opTotal)}</span></div>
+        <div class="cp-row big"><span class="cp-l">= ກຳໄລສຸດທິ</span><span class="cp-v ${D.netProfit>=0?'pos-margin':''}" ${D.netProfit<0?'style="color:var(--danger-deep)"':''}>${kip(D.netProfit)}</span></div>
+      </div>
+      <div class="tiny-note" style="text-align:left">ກຳໄລສຸດທິ = ຍອດຂາຍ − ຕົ້ນທຶນວັດຖຸດິບທີ່ໃຊ້ຈິງ (COGS) − ຄ່າໃຊ້ຈ່າຍດຳເນີນງານ (ຄ່ານ້ຳ ຄ່າໄຟ ຄ່າແຮງ...). <b>ບໍ່ນັບເງິນຊື້ເຂົ້າສາງ</b> ເພາະຕົ້ນທຶນຖືກຫັກຕອນຂາຍແລ້ວ (ກັນຕີກັນ 2 ເທື່ອ)</div>
     </div>
 
     <div class="card">
@@ -1352,11 +1485,21 @@ function renderFinance(){
     </div>
 
     <div class="card">
-      <div class="card-title"><span class="dot"></span>💸 ລາຍຈ່າຍ ແຍກລະອຽດ</div>
+      <div class="card-title"><span class="dot"></span>💸 ຄ່າໃຊ້ຈ່າຍດຳເນີນງານ ແຍກລະອຽດ</div>
       <div class="calc-preview" style="margin-top:0">
         ${expenseDetailRows}
-        <div class="cp-row big"><span class="cp-l">ລວມລາຍຈ່າຍ</span><span class="cp-v" style="color:var(--expense)">−${kip(D.expTotal)}</span></div>
+        <div class="cp-row big"><span class="cp-l">ລວມຄ່າໃຊ້ຈ່າຍ</span><span class="cp-v" style="color:var(--expense)">−${kip(D.opTotal)}</span></div>
       </div>
+    </div>
+
+    <div class="card" style="border:1.5px solid var(--pastel-sky)">
+      <div class="card-title"><span class="dot" style="background:#5BA3D0"></span>📦 ເງິນຊື້ວັດຖຸດິບເຂົ້າສາງ (ກະແສເງິນສົດ)</div>
+      <div class="calc-preview" style="margin-top:0">
+        <div class="cp-row"><span class="cp-l">ເງິນຊື້ເຂົ້າສາງເດືອນນີ້</span><span class="cp-v" style="color:#3C7FA8">${kip(D.invTotal)}</span></div>
+        <div class="cp-row"><span class="cp-l">ເງິນສົດອອກທັງໝົດ (ຊື້ສາງ + ຄ່າໃຊ້ຈ່າຍ)</span><span class="cp-v" style="color:var(--expense)">−${kip(D.cashOut)}</span></div>
+        <div class="cp-row big"><span class="cp-l">ກະແສເງິນສົດສຸດທິ</span><span class="cp-v ${D.cashFlow>=0?'pos-margin':''}" ${D.cashFlow<0?'style="color:var(--danger-deep)"':''}>${kip(D.cashFlow)}</span></div>
+      </div>
+      <div class="tiny-note" style="text-align:left">ນີ້ຄື <b>ເງິນສົດຈິງ</b> ທີ່ເຂົ້າ-ອອກ (ລວມເງິນຊື້ເຂົ້າສາງ). ຕ່າງຈາກກຳໄລ ເພາະຊື້ເຂົ້າສາງເປັນການປ່ຽນເງິນເປັນເຄື່ອງ (ຊັບສິນ) ຍັງບໍ່ແມ່ນຕົ້ນທຶນຈົນກວ່າຈະຂາຍ</div>
     </div>
 
     <div class="card">
@@ -1367,23 +1510,11 @@ function renderFinance(){
         <div class="pb transfer"><div class="pbl">🏦 ໂອນ</div><div class="pbv">${fmt(inBy.transfer)}</div></div>
         <div class="pb pandapay"><div class="pbl">🛵 Panda</div><div class="pbv">${fmt(inBy.pandapay)}</div></div>
       </div>
-      <div class="opt-label">ຈ່າຍເງິນ</div>
+      <div class="opt-label">ຈ່າຍເງິນ (ລວມຊື້ສາງ)</div>
       <div class="pay-break" style="grid-template-columns:1fr 1fr">
         <div class="pb cash"><div class="pbl">💵 ຈ່າຍສົດ</div><div class="pbv">${fmt(outBy.cash)}</div></div>
         <div class="pb transfer"><div class="pbl">🏦 ຈ່າຍໂອນ</div><div class="pbv">${fmt(outBy.transfer)}</div></div>
       </div>
-    </div>
-
-    <div class="card">
-      <div class="card-title"><span class="dot"></span>📈 ສະຫຼຸບຜົນປະກອບການ</div>
-      <div class="calc-preview" style="margin-top:0">
-        <div class="cp-row"><span class="cp-l">ລາຍຮັບທັງໝົດ</span><span class="cp-v pos-margin">+${kip(D.totalIncome)}</span></div>
-        <div class="cp-row"><span class="cp-l">ຕົ້ນທຶນວັດຖຸດິບ (ຈາກສູດ)</span><span class="cp-v" style="color:var(--expense)">−${kip(D.incCost)}</span></div>
-        <div class="cp-row sub"><span class="cp-l">ກຳໄລຂັ້ນຕົ້ນ (ຫຼັງຫັກຕົ້ນທຶນ)</span><span class="cp-v">${kip(D.totalIncome-D.incCost)}</span></div>
-        <div class="cp-row"><span class="cp-l">ລາຍຈ່າຍທັງໝົດ (ບັນທຶກຈິງ)</span><span class="cp-v" style="color:var(--expense)">−${kip(D.expTotal)}</span></div>
-        <div class="cp-row big"><span class="cp-l">ກຳໄລສຸດທິ</span><span class="cp-v ${D.netProfit>=0?'pos-margin':''}" ${D.netProfit<0?'style="color:var(--danger-deep)"':''}>${kip(D.netProfit)}</span></div>
-      </div>
-      <div class="tiny-note">ກຳໄລສຸດທິ = ລາຍຮັບທັງໝົດ − ລາຍຈ່າຍທີ່ບັນທຶກຈິງ (ຄ່າວັດຖຸດິບ ຄ່ານ້ຳ ຄ່າໄຟ ຄ່າແຮງ ແລະ ອື່ນໆ)</div>
     </div>`;
   } else {
     body=renderLedger(D.orders, D.expenses, D.incomes);
@@ -1422,14 +1553,13 @@ function printMonthlyReport(){
   D.incomes.forEach(i=>inBy[i.method]=(inBy[i.method]||0)+i.amount);
   const outBy={cash:0,transfer:0};
   D.expenses.forEach(e=>outBy[e.method]=(outBy[e.method]||0)+e.amount);
-  const outCat={}; D.expenses.forEach(e=>outCat[e.category]=(outCat[e.category]||0)+e.amount);
+  const outCat={}; D.opExpenses.forEach(e=>outCat[e.category]=(outCat[e.category]||0)+e.amount);
   const inCat={}; D.incomes.forEach(i=>inCat[i.category]=(inCat[i.category]||0)+i.amount);
 
   let incomeRows=`<tr><td>🛒 ຂາຍໜ້າຮ້ານ (${D.orders.length} ບິນ)</td><td class="r">${fmt(D.saleIncome)}</td></tr>`;
   state.incomeCats.forEach(c=>{ const v=inCat[c.id]||0; if(v>0) incomeRows+=`<tr><td>${c.emoji} ${esc(c.name)}</td><td class="r">${fmt(v)}</td></tr>`; });
-  let expenseRows='';
+  let expenseRows=`<tr><td>📦 ຕົ້ນທຶນວັດຖຸດິບທີ່ຂາຍ (COGS)</td><td class="r">${fmt(D.incCost)}</td></tr>`;
   state.expenseCats.forEach(c=>{ const v=outCat[c.id]||0; if(v>0) expenseRows+=`<tr><td>${c.emoji} ${esc(c.name)}</td><td class="r">${fmt(v)}</td></tr>`; });
-  if(!expenseRows) expenseRows=`<tr><td colspan="2" style="color:#999">ບໍ່ມີລາຍຈ່າຍ</td></tr>`;
 
   // -- ສ່ວນ 2: ສະຖິຕິການຂາຍ (ຕໍ່ເຄື່ອງດື່ມ) --
   const per={};
@@ -1504,7 +1634,7 @@ function printMonthlyReport(){
       <div class="sec-h">1. ສະຫຼຸບຮັບ-ຈ່າຍ ແລະ ຜົນປະກອບການ</div>
       <div class="cards">
         <div class="kpi"><div class="l">ລາຍຮັບລວມ</div><div class="v g">${fmt(D.totalIncome)}</div></div>
-        <div class="kpi"><div class="l">ລາຍຈ່າຍລວມ</div><div class="v e">${fmt(D.expTotal)}</div></div>
+        <div class="kpi"><div class="l">ຕົ້ນທຶນ+ຄ່າໃຊ້ຈ່າຍ</div><div class="v e">${fmt(D.incCost+D.opTotal)}</div></div>
         <div class="kpi"><div class="l">ກຳໄລສຸດທິ</div><div class="v ${D.netProfit>=0?'g':'e'}">${fmt(D.netProfit)}</div></div>
         <div class="kpi"><div class="l">ຈຳນວນບິນຂາຍ</div><div class="v">${D.orders.length}</div></div>
       </div>
@@ -1512,7 +1642,7 @@ function printMonthlyReport(){
         <div><div class="col-h">💰 ລາຍຮັບ ແຍກປະເພດ</div>
           <table><tbody>${incomeRows}</tbody><tfoot><tr><td>ລວມ</td><td class="r">${fmt(D.totalIncome)}</td></tr></tfoot></table></div>
         <div><div class="col-h">💸 ລາຍຈ່າຍ ແຍກປະເພດ</div>
-          <table><tbody>${expenseRows}</tbody><tfoot><tr><td>ລວມ</td><td class="r">${fmt(D.expTotal)}</td></tr></tfoot></table></div>
+          <table><tbody>${expenseRows}</tbody><tfoot><tr><td>ລວມ</td><td class="r">${fmt(D.incCost+D.opTotal)}</td></tr></tfoot></table></div>
       </div>
       <div class="two-col" style="margin-top:12px">
         <div><div class="col-h">ຮັບເງິນຕາມຊ່ອງທາງ</div>
@@ -1604,26 +1734,53 @@ function dateInputVal(iso){ const d=iso?new Date(iso):new Date(); return d.getFu
 function addExpense(){ expenseForm(null); }
 function editExpense(id){ const e=state.expenses.find(x=>x.id===id); if(e)expenseForm(e); }
 function expenseForm(exp){
-  const e=exp||{category:state.expenseCats[0].id,note:'',qty:1,unitPrice:0,method:'cash'};
+  const e=exp||{category:state.expenseCats[0].id,note:'',qty:1,unitPrice:0,method:'cash',stockLink:null};
   const catOpts=state.expenseCats.map(c=>`<option value="${c.id}" ${e.category===c.id?'selected':''}>${c.emoji} ${esc(c.name)}</option>`).join('');
+  const isStock=!!(e.stockLink&&e.stockLink.ingredientId);
+  const ingOpts=state.ingredients.map(i=>`<option value="${i.id}" ${isStock&&e.stockLink.ingredientId===i.id?'selected':''}>${i.emoji} ${esc(i.name)} (${esc(i.unit)})</option>`).join('');
   const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
     <div class="modal-grip"></div><h3>ບັນທຶກລາຍຈ່າຍ</h3><p class="msub">ໃສ່ລາຍລະອຽດເງິນທີ່ຈ່າຍອອກ</p>
     <div class="fg full" style="margin-bottom:14px"><label>ວັນເດືອນປີ</label><input type="date" id="expDate" value="${dateInputVal(exp?exp.date:null)}"></div>
-    <div class="fg full" style="margin-bottom:14px"><label>ປະເພດລາຍຈ່າຍ</label>
-      <div style="display:flex;gap:8px"><select id="expCat" style="flex:1">${catOpts}</select>
-      <button class="lu-btn" style="padding:0 16px;white-space:nowrap" onclick="addExpenseCat()">＋ ໃໝ່</button></div>
+
+    <div class="expense-type" style="margin-bottom:16px">
+      <label style="display:block;margin-bottom:8px">ປະເພດການຈ່າຍ</label>
+      <div class="opt-row" id="expTypeRow">
+        <button type="button" class="opt-btn ${isStock?'':'on'}" data-t="op" onclick="setExpType('op')">💡 ຄ່າໃຊ້ຈ່າຍທົ່ວໄປ</button>
+        <button type="button" class="opt-btn ${isStock?'on':''}" data-t="stock" onclick="setExpType('stock')">📦 ຊື້ເຂົ້າສາງ</button>
+      </div>
+      <input type="hidden" id="expType" value="${isStock?'stock':'op'}">
     </div>
-    <div class="fg full" style="margin-bottom:14px"><label>ລາຍລະອຽດ</label><input type="text" id="expNote" value="${esc(e.note)}" placeholder="ເຊັ່ນ ຊື້ຊາໄທ 5 ຖົງ"></div>
-    <div class="form-grid" style="margin-bottom:10px">
-      <div class="fg"><label>ຈຳນວນ</label><input type="number" id="expQty" value="${e.qty}" min="1" inputmode="numeric" oninput="updateExpTotal()"></div>
-      <div class="fg"><label>ລາຄາຕໍ່ໜ່ວຍ</label><div class="unit-in"><input type="number" id="expPrice" value="${e.unitPrice}" inputmode="numeric" oninput="updateExpTotal()"><span class="u">ກີບ</span></div></div>
+
+    <div id="expOpFields" style="display:${isStock?'none':'block'}">
+      <div class="fg full" style="margin-bottom:14px"><label>ປະເພດລາຍຈ່າຍ</label>
+        <div style="display:flex;gap:8px"><select id="expCat" style="flex:1">${catOpts}</select>
+        <button class="lu-btn" style="padding:0 16px;white-space:nowrap" onclick="addExpenseCat()">＋ ໃໝ່</button></div>
+      </div>
+      <div class="fg full" style="margin-bottom:14px"><label>ລາຍລະອຽດ</label><input type="text" id="expNote" value="${esc(e.note)}" placeholder="ເຊັ່ນ ຄ່າໄຟເດືອນ 7"></div>
+      <div class="form-grid" style="margin-bottom:10px">
+        <div class="fg"><label>ຈຳນວນ</label><input type="number" id="expQty" value="${e.qty}" min="1" inputmode="numeric" oninput="updateExpTotal()"></div>
+        <div class="fg"><label>ລາຄາຕໍ່ໜ່ວຍ</label><div class="unit-in"><input type="number" id="expPrice" value="${e.unitPrice}" inputmode="numeric" oninput="updateExpTotal()"><span class="u">ກີບ</span></div></div>
+      </div>
+      <div class="opt-row" style="margin-bottom:8px">
+        <button type="button" class="opt-btn" onclick="bumpExpPrice(1000)">+1,000</button>
+        <button type="button" class="opt-btn" onclick="bumpExpPrice(5000)">+5,000</button>
+        <button type="button" class="opt-btn" onclick="bumpExpPrice(10000)">+10,000</button>
+        <button type="button" class="opt-btn" onclick="bumpExpPrice(0)">ລ້າງ</button>
+      </div>
     </div>
-    <div class="opt-row" style="margin-bottom:14px">
-      <button type="button" class="opt-btn" onclick="bumpExpPrice(1000)">+1,000</button>
-      <button type="button" class="opt-btn" onclick="bumpExpPrice(5000)">+5,000</button>
-      <button type="button" class="opt-btn" onclick="bumpExpPrice(10000)">+10,000</button>
-      <button type="button" class="opt-btn" onclick="bumpExpPrice(0)">ລ້າງ</button>
+
+    <div id="expStockFields" style="display:${isStock?'block':'none'}">
+      <div class="fg full" style="margin-bottom:14px"><label>ຊື້ວັດຖຸດິບໃດເຂົ້າສາງ?</label>
+        ${state.ingredients.length?`<select id="expIng" onchange="onExpIngChange()">${ingOpts}</select>`:`<div class="tiny-note" style="text-align:left;color:var(--danger-deep)">ຍັງບໍ່ມີວັດຖຸດິບໃນສາງ ໄປເພີ່ມກ່ອນ</div>`}
+      </div>
+      <div class="form-grid" style="margin-bottom:10px">
+        <div class="fg"><label>ຈຳນວນ (ຫົວໜ່ວຍ)</label><input type="number" id="expStockQty" value="${isStock?e.stockLink.containers:1}" min="0" inputmode="decimal" oninput="updateStockExpCalc()"><span class="saved-hint" id="expStockUnitHint"></span></div>
+        <div class="fg"><label>ລາຄາຕໍ່ຫົວໜ່ວຍ</label><div class="unit-in"><input type="number" id="expStockPrice" value="${isStock?e.stockLink.unitCost:0}" inputmode="numeric" oninput="updateStockExpCalc()"><span class="u">ກີບ</span></div></div>
+      </div>
+      <div class="tiny-note" style="text-align:left;margin-bottom:8px">💡 ຈະເພີ່ມເຂົ້າສາງອັດຕະໂນມັດ ແລະ ອັບເດດລາຄາຕົ້ນທຶນໃຫ້</div>
+      <div class="calc-preview" id="expStockCalc" style="margin-top:0;margin-bottom:8px"></div>
     </div>
+
     <div class="fg full" style="margin-bottom:6px"><label>ຈ່າຍຜ່ານ</label>
       <div class="opt-row" id="expMethodRow">
         <button type="button" class="opt-btn ${e.method==='cash'?'on':''}" data-m="cash" onclick="setExpMethod('cash')">💵 ເງິນສົດ</button>
@@ -1637,26 +1794,101 @@ function expenseForm(exp){
     <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
   </div></div>`;
   $('modalRoot').innerHTML=html;
+  if(isStock){ onExpIngChange(); updateStockExpCalc(); }
+}
+function setExpType(t){
+  $('expType').value=t;
+  document.querySelectorAll('#expTypeRow .opt-btn').forEach(b=>b.classList.toggle('on',b.dataset.t===t));
+  const op=$('expOpFields'), sk=$('expStockFields');
+  if(op)op.style.display=t==='op'?'block':'none';
+  if(sk)sk.style.display=t==='stock'?'block':'none';
+  if(t==='stock'){ onExpIngChange(); updateStockExpCalc(); } else updateExpTotal();
+}
+function onExpIngChange(){
+  const sel=$('expIng'); if(!sel)return;
+  const ing=findIng(sel.value); if(!ing)return;
+  const hint=$('expStockUnitHint'); if(hint)hint.textContent='1 '+ing.unit+' = '+fmt(ing.qtyPerUnit)+' '+ing.baseUnit;
+  const priceEl=$('expStockPrice');
+  if(priceEl && (!priceEl.value||parseFloat(priceEl.value)===0)) priceEl.value=ing.purchaseCost;
+  updateStockExpCalc();
+}
+function updateStockExpCalc(){
+  const sel=$('expIng'); const ing=sel?findIng(sel.value):null;
+  const qty=parseFloat($('expStockQty')?$('expStockQty').value:0)||0;
+  const price=parseFloat($('expStockPrice')?$('expStockPrice').value:0)||0;
+  const total=qty*price;
+  const tv=$('expTotalView'); if(tv)tv.textContent=kip(total);
+  const c=$('expStockCalc');
+  if(c&&ing){
+    const addBase=qty*ing.qtyPerUnit;
+    const newCostPerBase=price/(ing.qtyPerUnit||1);
+    c.innerHTML=`<div class="cp-row"><span class="cp-l">ເພີ່ມເຂົ້າສາງ</span><span class="cp-v pos-margin">+${fmt(addBase)} ${esc(ing.baseUnit)}</span></div>
+    <div class="cp-row"><span class="cp-l">ຕົ້ນທຶນໃໝ່ຕໍ່ ${esc(ing.baseUnit)}</span><span class="cp-v">${newCostPerBase.toFixed(2)} ກີບ</span></div>`;
+  } else if(c){ c.innerHTML=''; }
 }
 function setExpMethod(m){ $('expMethod').value=m; document.querySelectorAll('#expMethodRow .opt-btn').forEach(b=>b.classList.toggle('on',b.dataset.m===m)); }
 function bumpExpPrice(step){ const el=$('expPrice'); if(!el)return; el.value=step===0?0:(parseFloat(el.value)||0)+step; updateExpTotal(); }
 function updateExpTotal(){
-  const q=parseFloat($('expQty').value)||0, p=parseFloat($('expPrice').value)||0;
+  const q=parseFloat($('expQty')?$('expQty').value:0)||0, p=parseFloat($('expPrice')?$('expPrice').value:0)||0;
   const v=$('expTotalView'); if(v)v.textContent=kip(q*p);
 }
 function saveExpense(id){
+  const type=$('expType')?$('expType').value:'op';
+  const dateISO=$('expDate').value?new Date($('expDate').value+'T12:00:00').toISOString():new Date().toISOString();
+  const method=$('expMethod').value;
+
+  if(type==='stock'){
+    // ຊື້ວັດຖຸດິບເຂົ້າສາງ — ລິ້ງກັບສາງ, ບໍ່ນັບເປັນຄ່າໃຊ້ຈ່າຍດຳເນີນງານ (ກັນຕີກັບ COGS)
+    const sel=$('expIng'); if(!sel){ toast('ບໍ່ມີວັດຖຸດິບໃຫ້ເລືອກ',true); return; }
+    const ing=findIng(sel.value); if(!ing){ toast('ເລືອກວັດຖຸດິບ',true); return; }
+    const containers=parseFloat($('expStockQty').value)||0;
+    const unitCost=parseFloat($('expStockPrice').value)||0;
+    if(containers<=0){ toast('ໃສ່ຈຳນວນຫົວໜ່ວຍ',true); return; }
+    const amount=containers*unitCost;
+    const addBase=containers*ing.qtyPerUnit;
+    const stockLink={ingredientId:ing.id, containers, unitCost, addBase, baseUnit:ing.baseUnit};
+    const note='ຊື້ '+ing.name+' '+fmt(containers)+' '+ing.unit;
+
+    if(id){
+      // ແກ້ໄຂ: ຖອນຜົນເກົ່າອອກກ່ອນ ແລ້ວໃສ່ໃໝ່
+      const old=state.expenses.find(x=>x.id===id);
+      if(old && old.stockLink){ const oi=findIng(old.stockLink.ingredientId); if(oi){ oi.stock=Math.max(0,oi.stock-(old.stockLink.addBase||0)); } }
+      // ໃສ່ໃໝ່
+      ing.stock+=addBase;
+      if(unitCost>0) ing.purchaseCost=unitCost;   // ອັບເດດຕົ້ນທຶນຫຼ້າສຸດ
+      Object.assign(old,{date:dateISO,category:'_inventory',note,qty:containers,unitPrice:unitCost,amount,method,stockLink});
+      toast('ແກ້ໄຂ ແລະ ອັບເດດສາງແລ້ວ');
+    }else{
+      ing.stock+=addBase;
+      if(unitCost>0) ing.purchaseCost=unitCost;
+      state.expenses.push({id:'e'+Date.now(),date:dateISO,category:'_inventory',note,qty:containers,unitPrice:unitCost,amount,method,stockLink});
+      toast('ບັນທຶກ ແລະ ເພີ່ມ '+fmt(addBase)+' '+ing.baseUnit+' ເຂົ້າສາງແລ້ວ');
+    }
+    save(); closeModal(); refresh(); return;
+  }
+
+  // ຄ່າໃຊ້ຈ່າຍທົ່ວໄປ (operating expense)
   const note=$('expNote').value.trim();
   const qty=parseFloat($('expQty').value)||0;
   const unitPrice=parseFloat($('expPrice').value)||0;
   const amount=qty*unitPrice;
   if(amount<=0){ toast('ກະລຸນາໃສ່ຈຳນວນ ແລະ ລາຄາ',true); return; }
-  const dateISO=$('expDate').value?new Date($('expDate').value+'T12:00:00').toISOString():new Date().toISOString();
-  const data={date:dateISO,category:$('expCat').value,note,qty,unitPrice,amount,method:$('expMethod').value};
-  if(id){ Object.assign(state.expenses.find(e=>e.id===id),data); toast('ແກ້ໄຂແລ້ວ'); }
+  const data={date:dateISO,category:$('expCat').value,note,qty,unitPrice,amount,method,stockLink:null};
+  if(id){
+    const old=state.expenses.find(e=>e.id===id);
+    // ຖ້າແກ້ຈາກ stock → op, ຖອນ stock ເກົ່າ
+    if(old && old.stockLink){ const oi=findIng(old.stockLink.ingredientId); if(oi){ oi.stock=Math.max(0,oi.stock-(old.stockLink.addBase||0)); } }
+    Object.assign(old,data); toast('ແກ້ໄຂແລ້ວ');
+  }
   else{ state.expenses.push({id:'e'+Date.now(),...data}); toast('ບັນທຶກລາຍຈ່າຍແລ້ວ'); }
   save(); closeModal(); refresh();
 }
-function deleteExpense(id){ state.expenses=state.expenses.filter(e=>e.id!==id); save(); closeModal(); refresh(); toast('ລຶບລາຍຈ່າຍແລ້ວ'); }
+function deleteExpense(id){
+  const e=state.expenses.find(x=>x.id===id);
+  // ຖ້າແມ່ນຊື້ເຂົ້າສາງ → ຖອນ stock ທີ່ເພີ່ມໄປອອກ
+  if(e && e.stockLink){ const ing=findIng(e.stockLink.ingredientId); if(ing){ ing.stock=Math.max(0,ing.stock-(e.stockLink.addBase||0)); } }
+  state.expenses=state.expenses.filter(x=>x.id!==id); save(); closeModal(); refresh(); toast('ລຶບລາຍຈ່າຍແລ້ວ');
+}
 
 /* Income form (ລາຍຮັບອື່ນ ນອກຈາກການຂາຍ) */
 function addIncome(){ incomeForm(null); }
@@ -2130,6 +2362,7 @@ function renderMenu(){
         <div class="unit-in"><input type="number" id="shopOverhead" value="${s.overheadPct}" inputmode="numeric" min="0"><span class="u">%</span></div>
       </div>
       <div class="fg full" style="margin-bottom:14px"><label>ຂໍ້ມູນເພີ່ມເຕີມ (ເບີໂທ, ເວລາເປີດ...)</label><textarea id="shopExtra" placeholder="ໂທ: 020 xxxx xxxx&#10;ເປີດ: 07:00 - 20:00">${esc(s.extra)}</textarea></div>
+      <div class="fg full" style="margin-bottom:14px"><label>ຂໍ້ຄວາມທ້າຍໃບບິນ (ຄຳຂອບໃຈ / ໂປຣໂມຊັນ)</label><textarea id="shopFooter" placeholder="ຂອບໃຈທີ່ອຸດໜູນ 🙏&#10;ໂຊກດີ ດື່ມແຊບໆ">${esc(s.receiptFooter||'')}</textarea><div class="saved-hint">ຂໍ້ຄວາມນີ້ຈະສະແດງທ້າຍໃບບິນທຸກໃບ · ຂຶ້ນบັນທັດໃໝ່ໄດ້</div></div>
       <div class="fg full" style="margin-bottom:4px"><label>QR ໂອນເງິນ (ສະແດງໃນໃບບິນ ໃຫ້ລູກຄ້າສະແກນຈ່າຍ)</label>
         <div class="logo-upload">
           <div class="logo-circle" id="shopQrPrev" style="border-radius:12px">${s.qr?`<img src="${s.qr}" alt="">`:'📱'}</div>
@@ -2140,6 +2373,13 @@ function renderMenu(){
         </div>
       </div>
       <button class="btn-save" onclick="saveShop()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>ບັນທຶກຂໍ້ມູນຮ້ານ</button>
+    </div>
+
+    <div class="divider-lbl">🏷️ ລາຍການສ່ວນຫຼຸດ (ໃຊ້ຕອນຂາຍ)</div>
+    <div class="card">
+      <div class="tiny-note" style="text-align:left;margin-top:0;margin-bottom:12px">ຕັ້ງລາຍການສ່ວນຫຼຸດໄວ້ລ່ວງໜ້າ → ຕອນຂາຍ ແຕະເລືອກໄດ້ເລີຍ</div>
+      <div id="discPresetList">${renderDiscountPresetList()}</div>
+      <button class="add-ing-btn" onclick="addDiscountPreset()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>ເພີ່ມລາຍການສ່ວນຫຼຸດ</button>
     </div>
 
     <div id="syncSection" class="divider-lbl">🔄 ຊິ້ງຫຼາຍເຄື່ອງ & ສຳຮອງຂໍ້ມູນ</div>
@@ -2154,6 +2394,50 @@ function renderMenu(){
       <div class="tiny-note">ຫຼັງບັນທຶກ ຄັ້ງໜ້າໃຫ້ໃຊ້ຊື່ ແລະ ລະຫັດໃໝ່ນີ້ເຂົ້າລະບົບ</div>
     </div>
   </div>`;
+}
+
+/* ---- ຈັດການລາຍການສ່ວນຫຼຸດ ---- */
+function renderDiscountPresetList(){
+  if(!state.discountPresets.length) return `<div class="tiny-note" style="padding:8px 0">ຍັງບໍ່ມີລາຍການສ່ວນຫຼຸດ</div>`;
+  return state.discountPresets.map(p=>{
+    const lbl=p.type==='pct'?(p.value+'%'):(fmt(p.value)+' ກີບ');
+    return `<div class="list-item">
+      <div class="li-ico" style="background:var(--pastel-peach)">🏷️</div>
+      <div class="li-body"><div class="li-t">${esc(p.name)}</div><div class="li-s">ຫຼຸດ ${lbl}</div></div>
+      <button class="del-x" onclick="deleteDiscountPreset('${p.id}')">🗑</button>
+    </div>`;
+  }).join('');
+}
+function addDiscountPreset(){
+  const html=`<div class="modal-back" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>ເພີ່ມລາຍການສ່ວນຫຼຸດ</h3><p class="msub">ຕັ້ງໄວ້ໃຫ້ເລືອກໄວຕອນຂາຍ</p>
+    <div class="fg full" style="margin-bottom:14px"><label>ຊື່ລາຍການ</label><input type="text" id="dpName" placeholder="ເຊັ່ນ ລູກຄ້າ VIP"></div>
+    <div class="fg full" style="margin-bottom:14px"><label>ແບບ</label>
+      <div class="opt-row" id="dpTypeRow">
+        <button type="button" class="opt-btn on" data-t="pct" onclick="dpSetType('pct')">% ເປີເຊັນ</button>
+        <button type="button" class="opt-btn" data-t="fixed" onclick="dpSetType('fixed')">ກີບ ຈຳນວນເງິນ</button>
+      </div><input type="hidden" id="dpType" value="pct">
+    </div>
+    <div class="fg full"><label>ຈຳນວນ</label><div class="unit-in"><input type="number" id="dpValue" inputmode="numeric" min="0"><span class="u" id="dpUnit">%</span></div></div>
+    <button class="btn-save" onclick="saveDiscountPresetItem()">ບັນທຶກ</button>
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function dpSetType(t){ $('dpType').value=t; document.querySelectorAll('#dpTypeRow .opt-btn').forEach(b=>b.classList.toggle('on',b.dataset.t===t)); const u=$('dpUnit'); if(u)u.textContent=t==='fixed'?'ກີບ':'%'; }
+function saveDiscountPresetItem(){
+  const name=$('dpName').value.trim();
+  const type=$('dpType').value;
+  const value=parseFloat($('dpValue').value)||0;
+  if(!name){ toast('ໃສ່ຊື່ລາຍການ',true); return; }
+  if(value<=0){ toast('ໃສ່ຈຳນວນ',true); return; }
+  if(type==='pct'&&value>100){ toast('ເປີເຊັນເກີນ 100 ບໍ່ໄດ້',true); return; }
+  state.discountPresets.push({id:'d'+Date.now(),name,type,value});
+  save(); closeModal(); refresh(); toast('ເພີ່ມລາຍການສ່ວນຫຼຸດແລ້ວ');
+}
+function deleteDiscountPreset(id){
+  state.discountPresets=state.discountPresets.filter(p=>p.id!==id);
+  save(); refresh(); toast('ລຶບແລ້ວ');
 }
 
 /* ---- ປ່ຽນລະຫັດເຂົ້າລະບົບ ---- */
@@ -2403,6 +2687,7 @@ function saveShop(){
   state.shop.province=$('shopProvince').value.trim();
   state.shop.road=$('shopRoad').value.trim();
   state.shop.extra=$('shopExtra').value.trim();
+  state.shop.receiptFooter=$('shopFooter').value;
   state.shop.overheadPct=Math.max(0,parseFloat($('shopOverhead').value)||0);
   DB.set('shop',state.shop); updateTopbar(); toast('ບັນທຶກຂໍ້ມູນຮ້ານແລ້ວ');
 }
