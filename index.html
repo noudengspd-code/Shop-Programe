@@ -201,6 +201,10 @@ input,select,textarea{font-family:inherit;font-size:16px}
 .img-preview .ip-remove{position:absolute;top:8px;right:8px;width:34px;height:34px;border-radius:10px;background:rgba(193,85,79,.92);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;backdrop-filter:blur(4px)}
 .img-preview .ip-remove:active{transform:scale(.9)}
 .img-preview .ip-change{position:absolute;bottom:8px;right:8px;padding:7px 12px;border-radius:10px;background:rgba(11,46,51,.7);color:#fff;font-size:12px;font-weight:600;backdrop-filter:blur(4px)}
+.img-err{padding:16px;text-align:center;font-size:12px;font-weight:600;color:#96552F;background:#FEF6EC;border-radius:12px;line-height:1.6}
+.legacy-warn{background:#FEF6EC;border:1px solid #E0A64C;border-radius:10px;padding:9px 11px;font-size:11.5px;font-weight:600;color:#96552F;margin-bottom:8px;line-height:1.5}
+.stor-bar{height:14px;background:#EAF6F6;border-radius:8px;overflow:hidden;margin:8px 0}
+.stor-fill{height:100%;border-radius:8px;transition:width .5s}
 
 .logo-upload{display:flex;align-items:center;gap:14px;margin-bottom:4px}
 .logo-circle{width:74px;height:74px;border-radius:20px;flex-shrink:0;overflow:hidden;background:linear-gradient(150deg,var(--pastel-sky),var(--pastel-mint));display:flex;align-items:center;justify-content:center;font-size:32px;border:2px solid var(--line);position:relative}
@@ -476,9 +480,6 @@ select{-webkit-appearance:none;appearance:none;background-image:url("data:image/
 
 <div class="toast" id="toast"></div>
 <div id="modalRoot"></div>
-<input type="file" id="fileMenuImg" accept="image/*" class="hidden">
-<input type="file" id="fileLogoImg" accept="image/*" class="hidden">
-<input type="file" id="fileQrImg" accept="image/*" class="hidden">
 <input type="file" id="fileImport" accept="application/json,.json" class="hidden">
 
 <script>
@@ -533,7 +534,25 @@ const DEFAULT_DISCOUNTS=[
 
 const DB={
   get(k,def){ try{const v=localStorage.getItem('pos_'+k);return v?JSON.parse(v):def;}catch(e){return def;} },
-  set(k,v){ try{localStorage.setItem('pos_'+k,JSON.stringify(v));}catch(e){toast('ພື້ນທີ່ເກັບຂໍ້ມູນເຕັມ ລອງລຶບຮູບເກົ່າ',true);} },
+  set(k,v){
+    try{ localStorage.setItem('pos_'+k,JSON.stringify(v)); return true; }
+    catch(e){
+      // ★ ເນື້ອທີ່ເຕັມ → ພະຍາຍາມກູ້ອັດຕະໂນມັດ: ລ້າງຮູບ base64 ເກົ່າອອກ ແລ້ວລອງໃໝ່
+      if(!DB._recovering){
+        DB._recovering=true;
+        try{
+          const freed=stripLegacyImages();
+          localStorage.setItem('pos_'+k,JSON.stringify(v));
+          DB._recovering=false;
+          if(freed>0) toast('ພື້ນທີ່ເຕັມ → ລ້າງຮູບເກົ່າ '+Math.round(freed/1024)+'KB ແລ້ວ ບັນທຶກສຳເລັດ');
+          return true;
+        }catch(e2){ DB._recovering=false; }
+      }
+      showStorageFullModal();
+      return false;
+    }
+  },
+  bytes(){ let t=0; try{ for(let i=0;i<localStorage.length;i++){ const key=localStorage.key(i); if(key&&key.indexOf('pos_')===0){ t+=byteSize(key)+byteSize(localStorage.getItem(key)||''); } } }catch(e){} return t; },
 };
 
 let state={
@@ -617,6 +636,12 @@ function seedDefaults(){
   // ★ Migration: shop ບໍ່ມີ receiptFooter/qr (ຜູ້ໃຊ້ເກົ່າ)
   if(state.shop && state.shop.receiptFooter===undefined){ state.shop.receiptFooter='ຂອບໃຈທີ່ອຸດໜູນ 🙏\nໂຊກດີ ດື່ມແຊບໆ'; DB.set('shop',state.shop); }
   if(state.shop && state.shop.qr===undefined){ state.shop.qr=null; DB.set('shop',state.shop); }
+  // ★ Migration: ລຶບຮູບ base64 ທີ່ຄ້າງໃນບິນຂາຍ (ບໍ່ມີບ່ອນໃຊ້ · ເປັນສາເຫດເນື້ອທີ່ເຕັມ)
+  try{
+    let dirty=false;
+    (state.orders||[]).forEach(o=>(o.items||[]).forEach(it=>{ if(it.img!==undefined){ delete it.img; dirty=true; } }));
+    if(dirty){ try{ localStorage.setItem('pos_orders',JSON.stringify(state.orders)); }catch(e){} }
+  }catch(e){}
 }
 function save(){
   DB.set('menu',state.menu); DB.set('ingredients',state.ingredients);
@@ -715,14 +740,49 @@ const SYNC={
   },
 
   _bundle(){
-    const b={_meta:{from:this.deviceId,ts:Date.now(),ver:3}};
+    const b={_meta:{from:this.deviceId,ts:Date.now(),ver:4}};
     SYNC_KEYS.forEach(k=>{ b[k]=DB.get(k,null); });
     return b;
   },
+
+  /* ★★★ ແບ່ງຂໍ້ມູນເປັນ "ສ່ວນ" (parts) — ແຕ່ລະສ່ວນເປັນ 1 ເອກະສານ Firestore
+     ເຫດຜົນ: Firestore ຈຳກັດ 1 ເອກະສານ = 1MB. ຂໍ້ມູນທັງໝົດໃນເອກະສານດຽວ = ຂຽນລົ້ມເຫຼວ.
+     ບິນຂາຍແບ່ງເປັນລາຍເດືອນ (orders_YYYY-MM) → ບໍ່ມີວັນເຕັມ */
+  _buildParts(){
+    const parts={};
+    parts['shop']={shop:DB.get('shop',null)};
+    parts['menu']={menu:DB.get('menu',null)};
+    parts['ingredients']={ingredients:DB.get('ingredients',null)};
+    parts['expenses']={expenses:DB.get('expenses',[])};
+    parts['incomes']={incomes:DB.get('incomes',[])};
+    parts['misc']={savedNames:DB.get('savedNames',[]),menuCats:DB.get('menuCats',[]),ingCats:DB.get('ingCats',[]),expenseCats:DB.get('expenseCats',[]),incomeCats:DB.get('incomeCats',[]),discountPresets:DB.get('discountPresets',[])};
+    // ບິນຂາຍ → ແບ່ງຕາມເດືອນ
+    const orders=DB.get('orders',[])||[];
+    const byMonth={};
+    orders.forEach(o=>{
+      const d=new Date(o.time);
+      const key='orders_'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+      (byMonth[key]=byMonth[key]||[]).push(o);
+    });
+    Object.keys(byMonth).forEach(k=>{ parts[k]={orders:byMonth[k]}; });
+    if(Object.keys(byMonth).length===0) parts['orders_empty']={orders:[]};
+    return parts;
+  },
+  // ນຳ parts ຈາກ cloud ມາປະກອບຄືນເປັນ state
+  _mergeParts(partMap){
+    const merged={orders:[]};
+    Object.keys(partMap).forEach(pid=>{
+      const p=partMap[pid]; if(!p) return;
+      if(pid.indexOf('orders_')===0){ if(Array.isArray(p.orders)) merged.orders=merged.orders.concat(p.orders); }
+      else Object.keys(p).forEach(k=>{ if(p[k]!==undefined && p[k]!==null) merged[k]=p[k]; });
+    });
+    merged.orders.sort((a,b)=>new Date(b.time)-new Date(a.time)); // ໃໝ່ສຸດກ່ອນ
+    return merged;
+  },
+
   _broadcast(){
     if(this.suppressBroadcast) return;
     if(this.channel){ try{ this.channel.postMessage({type:'update',from:this.deviceId,bundle:this._bundle()}); }catch(e){} }
-    // storage ping (fallback) — ຂຽນຄ່າ unique ໃຫ້ແທັບອື່ນ fire 'storage'
     try{ localStorage.setItem('pos_syncPing', Date.now()+'_'+this.deviceId); }catch(e){}
   },
 
@@ -743,46 +803,53 @@ const SYNC={
     SYNC_KEYS.forEach(k=>{ const v=DB.get(k,null); if(v!==null) state[k]=v; });
   },
 
-  /* ---------- CLOUD (Firebase Firestore) ---------- */
+  /* ---------- CLOUD (Firebase Firestore) — parts-based ---------- */
   async connectCloud(cfg){
     this.status='connecting'; this.lastError=''; updateSyncBadge();
     try{
-      // ໂຫຼດ Firebase SDK (modular, ຜ່ານ CDN) — ຄັ້ງດຽວ
       if(!window._fbmods){
         const appMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
         const fsMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
         window._fbmods={appMod,fsMod};
       }
       const {initializeApp}=window._fbmods.appMod;
-      const {getFirestore,doc,setDoc,getDoc,onSnapshot}=window._fbmods.fsMod;
+      const {getFirestore,doc,setDoc,getDocs,collection,onSnapshot}=window._fbmods.fsMod;
       const app=initializeApp(cfg, 'pos_'+Date.now());
       const db=getFirestore(app);
-      this.fb={app,db,doc,setDoc,onSnapshot};
-      // ໃຊ້ 1 ເອກະສານຕໍ່ 1 ຮ້ານ (storeId ດຽວກັນ = ຊິ້ງຮ່ວມກັນ)
+      this.fb={app,db,doc,setDoc,collection,onSnapshot};
       const storeId=DB.get('storeId',null)||EMBEDDED_STORE_ID;
       DB.set('storeId',storeId);
-      this.docRef=doc(db,'pos_stores',storeId);
-      // ★ ດຶງກ່ອນ (pull-first): ຖ້າ cloud ມີຂໍ້ມູນແລ້ວ → ເອົາລົງ (ບໍ່ທັບຂອງ cloud ດ້ວຍຂໍ້ມູນ default)
+      this.partsRef=collection(db,'pos_stores',storeId,'parts');
+      this._pushedHash={};   // ຈື່ວ່າສ່ວນໃດ push ໄປແລ້ວ (push ສະເພາະທີ່ປ່ຽນ)
+
+      // ★ ດຶງກ່ອນ (pull-first): cloud ມີຂໍ້ມູນ → ເອົາລົງ; cloud ຫວ່າງ → ອັບຂອງເຮົາຂຶ້ນ
       try{
-        const snap0=await getDoc(this.docRef);
-        if(snap0.exists() && snap0.data() && snap0.data().bundle){
-          let b; try{ b=JSON.parse(snap0.data().bundle); }catch(_){}
-          if(b && !(b._meta && b._meta.from===this.deviceId)) this._applyBundle(b,'cloud');
+        const snap0=await getDocs(this.partsRef);
+        const partMap={}; let found=0;
+        snap0.forEach(d=>{ try{ partMap[d.id]=JSON.parse(d.data().data); found++; }catch(_){} });
+        if(found>0){
+          const merged=this._mergeParts(partMap);
+          this._applyBundle(merged,'cloud');
         }else{
-          // cloud ຫວ່າງ → ອັບຂໍ້ມູນເຄື່ອງນີ້ຂຶ້ນ ເປັນຈຸດເລີ່ມ
-          await this.pushCloud();
+          await this.pushCloud(true);
         }
-      }catch(e){ /* getDoc ອາດຖືກ block ຊົ່ວຄາວ; onSnapshot ຈະຈັດການ */ }
-      // ຟັງການປ່ຽນແປງ (ຣຽວທາມ) — ອັບເດດເອງທຸກເຄື່ອງ
-      this.unsub=onSnapshot(this.docRef,(snap)=>{
-        if(!snap.exists()) return;
-        const data=snap.data();
-        if(!data||!data.bundle) return;
-        let bundle; try{ bundle=JSON.parse(data.bundle); }catch(e){ return; }
-        if(bundle._meta && bundle._meta.from===this.deviceId) return; // ຂອງເຮົາເອງ ຂ້າມ
-        this._applyBundle(bundle,'cloud');
+      }catch(e){ /* onSnapshot ຈະຈັດການຕໍ່ */ }
+
+      // ຟັງທຸກສ່ວນແບບຣຽວທາມ (ທັງ collection)
+      this.unsub=onSnapshot(this.partsRef,(snap)=>{
+        const partMap={}; let fromOther=false;
+        snap.forEach(d=>{
+          const raw=d.data(); if(!raw||!raw.data) return;
+          try{ partMap[d.id]=JSON.parse(raw.data); }catch(_){ return; }
+          if(raw.device && raw.device!==this.deviceId) fromOther=true;
+        });
+        if(!fromOther) return;                       // ຂອງເຮົາເອງ → ຂ້າມ (ກັນ loop)
+        if(Object.keys(partMap).length===0) return;
+        const merged=this._mergeParts(partMap);
+        this._applyBundle(merged,'cloud');
         toast('🔄 ອັບເດດຈາກອຸປະກອນອື່ນ');
       },(err)=>{ this.status='error'; this.lastError=err.message||'onSnapshot error'; updateSyncBadge(); });
+
       this.status='online'; this.lastError=''; updateSyncBadge();
       return true;
     }catch(e){
@@ -790,19 +857,30 @@ const SYNC={
       return false;
     }
   },
-  async pushCloud(){
-    if(!this.fb||!this.docRef) return;
+  // push ສະເພາະສ່ວນທີ່ປ່ຽນ (ປະຫຍັດ + ໄວ + ບໍ່ຕີ 1MB)
+  async pushCloud(force){
+    if(!this.fb||!this.partsRef) return;
     try{
-      const payload=JSON.stringify(this._bundle());
-      await this.fb.setDoc(this.docRef,{bundle:payload, updatedAt:Date.now(), device:this.deviceId});
-      this.lastPush=Date.now(); this.status='online'; updateSyncBadge();
+      const parts=this._buildParts();
+      this._pushedHash=this._pushedHash||{};
+      const jobs=[];
+      Object.keys(parts).forEach(pid=>{
+        const json=JSON.stringify(parts[pid]);
+        if(!force && this._pushedHash[pid]===json) return;    // ບໍ່ປ່ຽນ → ຂ້າມ
+        if(byteSize(json)>900000){ this.lastError='ສ່ວນ '+pid+' ໃຫຍ່ເກີນ 1MB'; }
+        const ref=this.fb.doc(this.partsRef,pid);
+        jobs.push(this.fb.setDoc(ref,{data:json,updatedAt:Date.now(),device:this.deviceId}).then(()=>{ this._pushedHash[pid]=json; }));
+      });
+      if(jobs.length===0){ this.status='online'; updateSyncBadge(); return; }
+      await Promise.all(jobs);
+      this.lastPush=Date.now(); this.status='online'; this.lastError=''; updateSyncBadge();
     }catch(e){
       this.status='error'; this.lastError=(e&&e.message)||String(e); updateSyncBadge();
     }
   },
   disconnectCloud(){
     try{ if(this.unsub)this.unsub(); }catch(e){}
-    this.fb=null; this.docRef=null; this.unsub=null;
+    this.fb=null; this.partsRef=null; this.unsub=null; this._pushedHash={};
     this.status='local'; DB.set('fbConfig',null); updateSyncBadge();
   },
 
@@ -819,7 +897,11 @@ const SYNC={
     checks.push({name:'ຕັ້ງຄ່າ Cloud (Firebase)', ok:hasCfg, critical:false});
     // 4) cloud online
     checks.push({name:'ເຊື່ອມຕໍ່ Cloud ຣຽວທາມ', ok:this.status==='online', critical:false, detail:hasCfg?(this.status==='error'?this.lastError:''):'(ຍັງບໍ່ໄດ້ຕັ້ງຄ່າ)'});
-    // 5) data integrity (gap scan)
+    // 5) ພື້ນທີ່ເກັບຂໍ້ມູນ ຍັງພໍ + ບໍ່ມີຮູບເກົ່າ
+    const S=storageStats();
+    const storOk=S.pct<80 && S.imgBytes===0 && S.orderImgBytes===0;
+    checks.push({name:'ພື້ນທີ່ໃນເຄື່ອງ ແລະ ຮູບ', ok:storOk, critical:false, detail:storOk?'':(S.pct>=80?('ໃຊ້ '+S.pct+'% ແລ້ວ'):'ມີຮູບເກົ່າ ≈'+Math.round((S.imgBytes+S.orderImgBytes)/1024)+'KB')});
+    // 6) data integrity (gap scan)
     const gaps=scanGaps();
     checks.push({name:'ຄວາມຄົບຖ້ວນຂອງຂໍ້ມູນ', ok:gaps.length===0, critical:false, detail:gaps.length?gaps.length+' ຈຸດຕ້ອງແກ້':''});
     // readiness %
@@ -873,6 +955,75 @@ function repairGaps(){
   });
   if(fixed>0){ save(); refresh(); }
   return fixed;
+}
+
+/* ============================================================
+   ★ ພື້ນທີ່ເກັບຂໍ້ມູນ — ວັດ / ລ້າງ / ກູ້
+   ============================================================ */
+const LS_LIMIT=5*1024*1024;   // localStorage ປະມານ 5MB
+function storageStats(){
+  const used=DB.bytes();
+  let imgBytes=0, imgCount=0, orderImgBytes=0;
+  try{
+    (state.menu||[]).forEach(m=>{ if(isDataImage(m.img)){ imgBytes+=byteSize(m.img); imgCount++; } });
+    if(isDataImage(state.shop&&state.shop.logo)){ imgBytes+=byteSize(state.shop.logo); imgCount++; }
+    if(isDataImage(state.shop&&state.shop.qr)){ imgBytes+=byteSize(state.shop.qr); imgCount++; }
+    (state.orders||[]).forEach(o=>(o.items||[]).forEach(it=>{ if(isDataImage(it.img)) orderImgBytes+=byteSize(it.img); }));
+  }catch(e){}
+  return {used, limit:LS_LIMIT, pct:Math.min(100,Math.round(used/LS_LIMIT*100)), imgBytes, imgCount, orderImgBytes};
+}
+/* ລ້າງຮູບ base64 ທັງໝົດ (ຮູບໃນບິນ = ຂີ້ເຫຍື້ອ ລ້າງໄດ້ເລີຍ; ຮູບເມນູ/ໂລໂກ້ = ຕ້ອງໃສ່ລິ້ງແທນ) */
+function stripLegacyImages(orderImagesOnly){
+  let freed=0;
+  try{
+    // 1) ຮູບໃນບິນຂາຍ — ບໍ່ມີບ່ອນໃຊ້ ລ້າງໄດ້ 100%
+    const orders=DB.get('orders',[])||[];
+    let changed=false;
+    orders.forEach(o=>(o.items||[]).forEach(it=>{ if(it.img!==undefined){ if(isDataImage(it.img))freed+=byteSize(it.img); delete it.img; changed=true; } }));
+    if(changed){ state.orders=orders; localStorage.setItem('pos_orders',JSON.stringify(orders)); }
+    if(orderImagesOnly) return freed;
+    // 2) ຮູບເມນູ / ໂລໂກ້ / QR (base64) — ລ້າງ ໃຫ້ໄປໃສ່ລິ້ງແທນ
+    const menu=DB.get('menu',[])||[];
+    let mChanged=false;
+    menu.forEach(m=>{ if(isDataImage(m.img)){ freed+=byteSize(m.img); m.img=null; mChanged=true; } });
+    if(mChanged){ state.menu=menu; localStorage.setItem('pos_menu',JSON.stringify(menu)); }
+    const shop=DB.get('shop',null);
+    if(shop){
+      let sChanged=false;
+      if(isDataImage(shop.logo)){ freed+=byteSize(shop.logo); shop.logo=null; sChanged=true; }
+      if(isDataImage(shop.qr)){ freed+=byteSize(shop.qr); shop.qr=null; sChanged=true; }
+      if(sChanged){ state.shop=shop; localStorage.setItem('pos_shop',JSON.stringify(shop)); }
+    }
+  }catch(e){}
+  return freed;
+}
+function showStorageFullModal(){
+  const S=storageStats();
+  const html=`<div class="modal-back" style="z-index:300" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>⚠️ ພື້ນທີ່ເກັບຂໍ້ມູນເຕັມ</h3>
+    <p class="msub">ບັນທຶກບໍ່ໄດ້ ເພາະຮູບ base64 ເກົ່າກິນເນື້ອທີ່ · ໃຊ້ ${Math.round(S.used/1024)}KB ຈາກ ~5MB</p>
+    <div style="background:#FEF6EC;border-radius:12px;padding:14px;font-size:12.5px;color:#96552F;line-height:1.7;margin-bottom:8px">
+      ຮູບເກັບໃນເຄື່ອງ: <b>${S.imgCount} ຮູບ ≈ ${Math.round(S.imgBytes/1024)}KB</b><br>
+      ຮູບຂີ້ເຫຍື້ອໃນບິນ: <b>≈ ${Math.round(S.orderImgBytes/1024)}KB</b> (ບໍ່ມີບ່ອນໃຊ້)
+    </div>
+    <div class="tiny-note" style="text-align:left;margin-bottom:12px">ແນະນຳ: ດາວໂຫຼດສຳຮອງໄວ້ກ່ອນ → ແລ້ວລ້າງຮູບ → ຫຼັງຈາກນັ້ນໃສ່ຮູບເປັນ <b>ລິ້ງ Google Drive</b> ແທນ (ບໍ່ກິນເນື້ອທີ່ເລີຍ)</div>
+    <button class="btn-save" onclick="exportData()">1️⃣ ດາວໂຫຼດສຳຮອງກ່ອນ</button>
+    <button class="btn-save" style="background:linear-gradient(135deg,#E0A64C,#C1854C)" onclick="doStripImages()">2️⃣ ລ້າງຮູບເກົ່າ ກູ້ພື້ນທີ່</button>
+    <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
+  </div></div>`;
+  const el=$('modalRoot'); if(el)el.innerHTML=html;
+}
+function doStripImages(){
+  const freed=stripLegacyImages(false);
+  SYNC._reloadLocalIntoState();
+  closeModal(); refresh();
+  toast(freed>0?('ກູ້ພື້ນທີ່ໄດ້ '+Math.round(freed/1024)+'KB ✓ ໃສ່ຮູບເປັນລິ້ງໄດ້ເລີຍ'):'ບໍ່ມີຮູບເກົ່າໃຫ້ລ້າງ');
+}
+function doStripOrderImages(){
+  const freed=stripLegacyImages(true);
+  SYNC._reloadLocalIntoState();
+  refresh();
+  toast(freed>0?('ລ້າງຮູບຂີ້ເຫຍື້ອໃນບິນ '+Math.round(freed/1024)+'KB ✓'):'ບິນສະອາດຢູ່ແລ້ວ');
 }
 
 /* ---------- EXPORT / IMPORT / RECOVERY ---------- */
@@ -930,28 +1081,30 @@ function toast(msg,isErr){
   t.className='toast show'+(isErr?' err':'');
   clearTimeout(t._to); t._to=setTimeout(()=>{t.className='toast'+(isErr?' err':'');},2400);
 }
-/* ★ ອ່ານຮູບ + ຫຍໍ້ຂະໜາດ + ບີບອັດ ກ່ອນເກັບ (FIX: ຮູບບໍ່ສະແດງ ຍ້ອນຟັງຊັນນີ້ຫາຍໄປ) */
-function processImage(file,maxDim,cb){
-  const reader=new FileReader();
-  reader.onload=e=>{
-    const img=new Image();
-    img.onload=()=>{
-      let w=img.width,h=img.height;
-      if(w>h){ if(w>maxDim){ h=h*maxDim/w; w=maxDim; } }
-      else { if(h>maxDim){ w=w*maxDim/h; h=maxDim; } }
-      const canvas=document.createElement('canvas');
-      canvas.width=Math.round(w); canvas.height=Math.round(h);
-      const ctx=canvas.getContext('2d');
-      ctx.drawImage(img,0,0,canvas.width,canvas.height);
-      try{ cb(canvas.toDataURL('image/jpeg',0.82)); }
-      catch(err){ toast('ບໍ່ສາມາດແປງຮູບໄດ້',true); }
-    };
-    img.onerror=()=>toast('ບໍ່ສາມາດອ່ານຮູບໄດ້ ລອງຮູບອື່ນ',true);
-    img.src=e.target.result;
-  };
-  reader.onerror=()=>toast('ບໍ່ສາມາດອ່ານໄຟລ໌ໄດ້',true);
-  reader.readAsDataURL(file);
+/* ★★★ ຮູບ = ລິ້ງ (ບໍ່ເກັບ base64 ອີກຕໍ່ໄປ — ກັນເນື້ອທີ່ເຕັມ)
+   ຮັບໄດ້: ລິ້ງແຊຣ໌ Google Drive, ລິ້ງຮູບກົງ (https://...jpg), Dropbox, imgur ແລະ ອື່ນໆ */
+function normalizeImageUrl(url){
+  if(!url) return '';
+  url=String(url).trim();
+  if(!url) return '';
+  if(url.startsWith('data:')) return url;               // ຮູບເກົ່າ (base64) — ຍັງສະແດງໄດ້
+  // Google Drive → ແປງເປັນລິ້ງສະແດງກົງ
+  if(url.indexOf('drive.google.com')>=0 || url.indexOf('docs.google.com')>=0){
+    const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]{10,})/)
+           || url.match(/[?&]id=([a-zA-Z0-9_-]{10,})/)
+           || url.match(/\/d\/([a-zA-Z0-9_-]{10,})/);
+    if(m) return 'https://drive.google.com/thumbnail?id='+m[1]+'&sz=w1000';
+    return url;
+  }
+  // Google User Content (ຈາກ Drive) — ໃຊ້ໄດ້ເລີຍ
+  if(url.indexOf('googleusercontent.com')>=0) return url;
+  // Dropbox → ບັງຄັບໃຫ້ສະແດງກົງ
+  if(url.indexOf('dropbox.com')>=0) return url.replace(/[?&]dl=0/,'').replace('www.dropbox.com','dl.dropboxusercontent.com');
+  return url;
 }
+function isDataImage(v){ return typeof v==='string' && v.startsWith('data:'); }
+/* ຄິດຂະໜາດ byte ຂອງ string (UTF-16 → ປະມານ) */
+function byteSize(str){ try{ return new Blob([str]).size; }catch(e){ return (str||'').length*2; } }
 function todayKey(d){d=d||new Date();return d.getFullYear()+'-'+(d.getMonth()+1)+'-'+d.getDate();}
 function weekStart(d){d=new Date(d);const day=(d.getDay()+6)%7;d.setDate(d.getDate()-day);d.setHours(0,0,0,0);return d;}
 function sameWeek(a,b){return weekStart(a).getTime()===weekStart(b).getTime();}
@@ -1260,7 +1413,8 @@ function doCheckout(){
   const ids=cartIds(); if(ids.length===0)return;
   const items=ids.map(id=>{
     const m=state.menu.find(x=>x.id===id);
-    return {id,name:m.name,emoji:m.emoji,img:m.img||null,price:m.price,cost:Math.round(totalCost(m)),qty:state.cart[id],recipe:(m.recipe||[]).map(r=>({...r}))};
+    // ★ ບໍ່ເກັບ img ໃນບິນອີກຕໍ່ໄປ (ບໍ່ມີບ່ອນໃຊ້ ແລະ ເຮັດໃຫ້ເນື້ອທີ່ເຕັມ) — ໃຊ້ emoji + ຊື່ພໍ
+    return {id,name:m.name,emoji:m.emoji,price:m.price,cost:Math.round(totalCost(m)),qty:state.cart[id],recipe:(m.recipe||[]).map(r=>({...r}))};
   });
   const subtotal=items.reduce((s,i)=>s+i.price*i.qty,0);
   const disc=discountAmount(subtotal);
@@ -2340,14 +2494,16 @@ function renderMenu(){
 
     <div class="divider-lbl">⚙️ ຕັ້ງຄ່າຮ້ານ / ຂໍ້ມູນໃບບິນ</div>
     <div class="card">
-      <div class="fg full" style="margin-bottom:14px"><label>ໂລໂກ້ຮ້ານ (ສະແດງເທິງໃບບິນ)</label>
-        <div class="logo-upload">
+      <div class="fg full" style="margin-bottom:14px"><label>ໂລໂກ້ຮ້ານ (ວາງລິ້ງຮູບ)</label>
+        <div class="logo-upload" style="margin-bottom:8px">
           <div class="logo-circle" id="shopLogoPrev">${logoInner}</div>
           <div class="lu-btns">
-            <button class="lu-btn" onclick="pickLogo()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>ອັບໂຫຼດໂລໂກ້</button>
-            ${s.logo?`<button class="lu-rm" onclick="removeLogo()">ລຶບໂລໂກ້</button>`:''}
+            ${s.logo?`<button class="lu-rm" onclick="removeLogo()">ລຶບໂລໂກ້</button>`:'<span class="saved-hint">ວາງລິ້ງຂ້າງລຸ່ມ</span>'}
           </div>
         </div>
+        ${isDataImage(s.logo)?`<div class="legacy-warn">⚠️ ໂລໂກ້ເກົ່າເກັບໃນເຄື່ອງ ~${Math.round(byteSize(s.logo)/1024)}KB · ແນະນຳປ່ຽນເປັນລິ້ງ</div>`:''}
+        <input type="text" id="shopLogoUrl" value="${isDataImage(s.logo)?'':esc(s.logo||'')}" placeholder="ວາງລິ້ງ Google Drive ທີ່ນີ້" oninput="onLogoUrl(this.value)">
+        <div class="saved-hint">📎 <a onclick="showDriveGuide()" style="color:var(--teal-deep);font-weight:700;cursor:pointer">ວິທີເອົາລິ້ງຮູບ</a></div>
       </div>
       <div class="fg full" style="margin-bottom:14px"><label>ຊື່ຮ້ານ</label><input type="text" id="shopName" value="${esc(s.name)}" placeholder="ຮ້ານເຄື່ອງດື່ມ"></div>
       <div class="form-grid" style="margin-bottom:14px">
@@ -2363,14 +2519,15 @@ function renderMenu(){
       </div>
       <div class="fg full" style="margin-bottom:14px"><label>ຂໍ້ມູນເພີ່ມເຕີມ (ເບີໂທ, ເວລາເປີດ...)</label><textarea id="shopExtra" placeholder="ໂທ: 020 xxxx xxxx&#10;ເປີດ: 07:00 - 20:00">${esc(s.extra)}</textarea></div>
       <div class="fg full" style="margin-bottom:14px"><label>ຂໍ້ຄວາມທ້າຍໃບບິນ (ຄຳຂອບໃຈ / ໂປຣໂມຊັນ)</label><textarea id="shopFooter" placeholder="ຂອບໃຈທີ່ອຸດໜູນ 🙏&#10;ໂຊກດີ ດື່ມແຊບໆ">${esc(s.receiptFooter||'')}</textarea><div class="saved-hint">ຂໍ້ຄວາມນີ້ຈະສະແດງທ້າຍໃບບິນທຸກໃບ · ຂຶ້ນบັນທັດໃໝ່ໄດ້</div></div>
-      <div class="fg full" style="margin-bottom:4px"><label>QR ໂອນເງິນ (ສະແດງໃນໃບບິນ ໃຫ້ລູກຄ້າສະແກນຈ່າຍ)</label>
-        <div class="logo-upload">
+      <div class="fg full" style="margin-bottom:4px"><label>QR ໂອນເງິນ (ວາງລິ້ງຮູບ · ສະແດງໃນໃບບິນ)</label>
+        <div class="logo-upload" style="margin-bottom:8px">
           <div class="logo-circle" id="shopQrPrev" style="border-radius:12px">${s.qr?`<img src="${s.qr}" alt="">`:'📱'}</div>
           <div class="lu-btns">
-            <button class="lu-btn" onclick="pickQr()"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="width:16px;height:16px"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><line x1="14" y1="14" x2="14" y2="14"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="14" y1="21" x2="14" y2="21"/></svg>ອັບ QR ໂອນເງິນ</button>
-            ${s.qr?`<button class="lu-rm" onclick="removeQr()">ລຶບ QR</button>`:''}
+            ${s.qr?`<button class="lu-rm" onclick="removeQr()">ລຶບ QR</button>`:'<span class="saved-hint">ວາງລິ້ງຂ້າງລຸ່ມ</span>'}
           </div>
         </div>
+        ${isDataImage(s.qr)?`<div class="legacy-warn">⚠️ QR ເກົ່າເກັບໃນເຄື່ອງ ~${Math.round(byteSize(s.qr)/1024)}KB · ແນະນຳປ່ຽນເປັນລິ້ງ</div>`:''}
+        <input type="text" id="shopQrUrl" value="${isDataImage(s.qr)?'':esc(s.qr||'')}" placeholder="ວາງລິ້ງ QR ຈາກ Google Drive" oninput="onQrUrl(this.value)">
       </div>
       <button class="btn-save" onclick="saveShop()"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>ບັນທຶກຂໍ້ມູນຮ້ານ</button>
     </div>
@@ -2496,6 +2653,20 @@ function renderSyncPanel(){
     </div>
 
     ${gapHtml}
+
+    ${(()=>{ const S=storageStats();
+      const col=S.pct>=80?'#C1554F':S.pct>=50?'#E0A64C':'#2FA8A0';
+      const hasLegacy=S.imgBytes>0||S.orderImgBytes>0;
+      return `<div class="card" ${S.pct>=80?'style="border:2px solid var(--danger)"':''}>
+        <div class="card-title"><span class="dot" style="background:${col}"></span>💽 ພື້ນທີ່ໃນເຄື່ອງ</div>
+        <div style="display:flex;justify-content:space-between;font-size:12.5px;font-weight:600">
+          <span>ໃຊ້ ${Math.round(S.used/1024)} KB</span><span style="color:${col}">${S.pct}% ຈາກ ~5 MB</span>
+        </div>
+        <div class="stor-bar"><div class="stor-fill" style="width:${S.pct}%;background:${col}"></div></div>
+        ${hasLegacy?`<div class="legacy-warn" style="margin-top:8px;margin-bottom:8px">ພົບຮູບເກົ່າເກັບໃນເຄື່ອງ: ${S.imgCount} ຮູບ ≈ ${Math.round(S.imgBytes/1024)}KB${S.orderImgBytes>0?` · ຮູບຂີ້ເຫຍື້ອໃນບິນ ≈ ${Math.round(S.orderImgBytes/1024)}KB`:''}<br>ຮູບເກົ່າກິນເນື້ອທີ່ ແລະ ເຮັດໃຫ້ຊິ້ງ Cloud ລົ້ມເຫຼວ</div>
+        <button class="btn-save" style="margin-top:0;background:linear-gradient(135deg,#E0A64C,#C1854C)" onclick="doStripImages()">🧹 ລ້າງຮູບເກົ່າ ກູ້ພື້ນທີ່</button>`:
+        `<div class="tiny-note" style="text-align:left;margin-top:6px">✅ ສະອາດ — ຮູບໃຊ້ລິ້ງທັງໝົດ ບໍ່ກິນເນື້ອທີ່</div>`}
+      </div>`; })()}
 
     <div class="card">
       <div class="card-title"><span class="dot"></span>💾 ສຳຮອງ & ກູ້ຂໍ້ມູນ (ໃຊ້ໄດ້ທຸກເຄື່ອງ)</div>
@@ -2639,45 +2810,36 @@ function showFirebaseGuide(){
       <div style="margin-bottom:10px"><b>4.</b> ກົດຮູບເຟືອງ ⚙️ → <b>Project settings</b> → ເລື່ອນລົງຫາ <b>Your apps</b> → ກົດ <b>Web &lt;/&gt;</b></div>
       <div style="margin-bottom:10px"><b>5.</b> ຕັ້ງຊື່ app → Register → ຈະເຫັນ <b>firebaseConfig = { ... }</b></div>
       <div style="margin-bottom:10px"><b>6.</b> ກ໋ອບປີ້ສ່ວນ <b>{ apiKey... appId }</b> ມາວາງໃນຊ່ອງຕັ້ງຄ່າ Cloud</div>
-      <div style="background:#FEF6EC;border-radius:10px;padding:12px;margin-top:12px;font-size:12.5px;color:#96552F"><b>ໝາຍເຫດ:</b> test mode ໃຊ້ໄດ້ 30 ວັນ. ຫຼັງຈາກນັ້ນ ໄປທີ່ Firestore → Rules ປ່ຽນ <code>allow read, write: if true;</code> (ຫຼື ຕັ້ງລະບົບ auth ພາຍຫຼັງ)</div>
+      <div style="background:#FEF6EC;border-radius:10px;padding:12px;margin-top:12px;font-size:12.5px;color:#96552F;line-height:1.7"><b>ໝາຍເຫດ:</b> test mode ໃຊ້ໄດ້ 30 ວັນ. ຫຼັງຈາກນັ້ນໄປທີ່ <b>Firestore → Rules</b> ວາງນີ້ແທນ:<br>
+      <code style="display:block;background:#fff;padding:8px;border-radius:6px;margin-top:6px;font-size:11px;line-height:1.5">rules_version = '2';<br>service cloud.firestore {<br>&nbsp;&nbsp;match /databases/{db}/documents {<br>&nbsp;&nbsp;&nbsp;&nbsp;match /{document=**} {<br>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;allow read, write: if true;<br>&nbsp;&nbsp;&nbsp;&nbsp;}<br>&nbsp;&nbsp;}<br>}</code>
+      <span style="font-size:11.5px">(<b>{document=**}</b> ສຳຄັນ — ໃຫ້ຂໍ້ມູນຍ່ອຍທັງໝົດຊິ້ງໄດ້)</span></div>
     </div>
     <button class="btn-save" onclick="closeModal();openCloudSetup()">ເຂົ້າໃຈແລ້ວ ໄປຕັ້ງຄ່າ</button>
     <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
   </div></div>`;
   $('modalRoot').innerHTML=html;
 }
-function pickLogo(){
-  const inp=$('fileLogoImg'); inp.value='';
-  inp.onchange=function(){
-    const f=inp.files[0]; if(!f)return;
-    processImage(f,240,d=>{
-      state.shop.logo=d; DB.set('shop',state.shop);
-      const prev=$('shopLogoPrev'); if(prev)prev.innerHTML=`<img src="${d}" alt="">`;
-      updateTopbar(); toast('ອັບໂຫຼດໂລໂກ້ແລ້ວ');
-      if(currentPage==='menu')refresh();
-    });
-  };
-  inp.click();
+function onLogoUrl(v){
+  state.shop.logo=normalizeImageUrl(v); DB.set('shop',state.shop);
+  const prev=$('shopLogoPrev'); if(prev)prev.innerHTML=state.shop.logo?`<img src="${state.shop.logo}" alt="">`:'🏪';
+  updateTopbar();
 }
 function removeLogo(){
   state.shop.logo=null; DB.set('shop',state.shop);
-  $('topLogo').innerHTML=`<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"/><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/><line x1="6" y1="1" x2="6" y2="4"/><line x1="10" y1="1" x2="10" y2="4"/><line x1="14" y1="1" x2="14" y2="4"/></svg>`;
-  refresh(); toast('ລຶບໂລໂກ້ແລ້ວ');
+  const el=$('shopLogoUrl'); if(el)el.value='';
+  const prev=$('shopLogoPrev'); if(prev)prev.innerHTML='🏪';
+  updateTopbar(); toast('ລຶບໂລໂກ້ແລ້ວ');
 }
-function pickQr(){
-  const inp=$('fileQrImg'); inp.value='';
-  inp.onchange=function(){
-    const f=inp.files[0]; if(!f)return;
-    processImage(f,500,d=>{
-      state.shop.qr=d; DB.set('shop',state.shop);
-      const prev=$('shopQrPrev'); if(prev)prev.innerHTML=`<img src="${d}" alt="">`;
-      toast('ອັບ QR ໂອນເງິນແລ້ວ');
-      if(currentPage==='menu')refresh();
-    });
-  };
-  inp.click();
+function onQrUrl(v){
+  state.shop.qr=normalizeImageUrl(v); DB.set('shop',state.shop);
+  const prev=$('shopQrPrev'); if(prev)prev.innerHTML=state.shop.qr?`<img src="${state.shop.qr}" alt="">`:'📱';
 }
-function removeQr(){ state.shop.qr=null; DB.set('shop',state.shop); refresh(); toast('ລຶບ QR ແລ້ວ'); }
+function removeQr(){
+  state.shop.qr=null; DB.set('shop',state.shop);
+  const el=$('shopQrUrl'); if(el)el.value='';
+  const prev=$('shopQrPrev'); if(prev)prev.innerHTML='📱';
+  toast('ລຶບ QR ແລ້ວ');
+}
 function saveShop(){
   const name=$('shopName').value.trim();
   if(!name){ toast('ກະລຸນາປ້ອນຊື່ຮ້ານ',true); return; }
@@ -2711,7 +2873,7 @@ function menuForm(item){
     <p class="msub">ອັບຮູບ ຕັ້ງສູດ ຄິດຕົ້ນທຶນ ແລະ ລາຄາຂາຍ</p>
     <input type="hidden" id="menuEmoji" value="${e.emoji}">
 
-    <div class="fg full" style="margin-bottom:14px"><label>ຮູບເມນູ (ຈະສະແດງໜ້າຂາຍ)</label><div id="menuImgZone">${menuImgZoneHtml()}</div></div>
+    <div class="fg full" style="margin-bottom:14px"><label>ຮູບເມນູ — ວາງລິ້ງ (ຈະສະແດງໜ້າຂາຍ)</label><div id="menuImgZone">${menuImgZoneHtml()}</div></div>
 
     <div class="fg full" style="margin-bottom:14px"><label>ຊື່ສູດ / ເມນູ</label>
       <input type="text" id="menuName" value="${esc(e.name)}" placeholder="ເຊັ່ນ ຊາໄທເຢັນ">
@@ -2758,20 +2920,37 @@ function menuForm(item){
 }
 
 function menuImgZoneHtml(){
-  if(menuDraft && menuDraft.img){
-    return `<div class="img-preview"><img src="${menuDraft.img}" alt=""><button class="ip-remove" onclick="clearMenuImg()">✕</button><button class="ip-change" onclick="pickMenuImg()">ປ່ຽນຮູບ</button></div>`;
-  }
-  return `<div class="img-upload" onclick="pickMenuImg()"><div class="iu-ico">📷</div><div class="iu-t">ແຕະເພື່ອອັບຮູບເມນູ</div><div class="iu-s">ຖ່າຍ ຫຼື ເລືອກຈາກຄັງພາບ (ຮູບລວງສູງ)</div></div>`;
+  const cur=(menuDraft&&menuDraft.img)?menuDraft.img:'';
+  const legacy=isDataImage(cur);
+  const preview=cur?`<div class="img-preview"><img src="${cur}" alt="" onerror="this.parentElement.innerHTML='<div class=\\'img-err\\'>⚠️ ເປີດຮູບບໍ່ໄດ້ — ກວດວ່າຕັ້ງແຊຣ໌ເປັນ Anyone with the link ແລ້ວບໍ່</div>'"><button class="ip-remove" onclick="clearMenuImg()">✕</button></div>`:'';
+  return `${preview}
+    ${legacy?`<div class="legacy-warn">⚠️ ຮູບນີ້ເປັນຮູບເກົ່າ (ເກັບໃນເຄື່ອງ) ກິນເນື້ອທີ່ ~${Math.round(byteSize(cur)/1024)}KB · ແນະນຳໃຫ້ປ່ຽນເປັນລິ້ງ</div>`:''}
+    <input type="text" id="menuImgUrl" value="${legacy?'':esc(cur)}" placeholder="ວາງລິ້ງຮູບ Google Drive ທີ່ນີ້" oninput="onMenuImgUrl(this.value)">
+    <div class="saved-hint">📎 ວາງລິ້ງແຊຣ໌ຈາກ Google Drive ໄດ້ເລີຍ ລະບົບແປງໃຫ້ອັດຕະໂນມັດ · <a onclick="showDriveGuide()" style="color:var(--teal-deep);font-weight:700;cursor:pointer">ວິທີເອົາລິ້ງ</a></div>`;
 }
-function pickMenuImg(){
-  const inp=$('fileMenuImg'); inp.value='';
-  inp.onchange=function(){
-    const f=inp.files[0]; if(!f)return;
-    processImage(f,700,d=>{ menuDraft.img=d; const z=$('menuImgZone'); if(z)z.innerHTML=menuImgZoneHtml(); toast('ເພີ່ມຮູບແລ້ວ'); });
-  };
-  inp.click();
+function onMenuImgUrl(v){
+  menuDraft.img=normalizeImageUrl(v);
+  clearTimeout(window._imgT);
+  window._imgT=setTimeout(()=>{ const z=$('menuImgZone'); if(z){ z.innerHTML=menuImgZoneHtml(); const el=$('menuImgUrl'); if(el){ el.focus(); } } },900);
 }
 function clearMenuImg(){ menuDraft.img=null; const z=$('menuImgZone'); if(z)z.innerHTML=menuImgZoneHtml(); }
+function showDriveGuide(){
+  const html=`<div class="modal-back" style="z-index:260" onclick="if(event.target===this)closeDriveGuide()"><div class="modal">
+    <div class="modal-grip"></div><h3>📎 ວິທີເອົາລິ້ງຮູບຈາກ Google Drive</h3>
+    <p class="msub">ເຮັດຄັ້ງດຽວຕໍ່ຮູບ · ຟຣີ ບໍ່ກິນເນື້ອທີ່ໃນເຄື່ອງ</p>
+    <div style="font-size:13.5px;line-height:1.95;color:var(--ink)">
+      <div style="margin-bottom:9px"><b>1.</b> ເປີດແອັບ <b>Google Drive</b> → ອັບຮູບເມນູຂຶ້ນ</div>
+      <div style="margin-bottom:9px"><b>2.</b> ກົດຄ້າງທີ່ຮູບ → <b>ແຊຣ໌ (Share)</b></div>
+      <div style="margin-bottom:9px"><b>3.</b> ປ່ຽນສິດເປັນ <b>“Anyone with the link”</b> ⬅️ <span style="color:var(--danger-deep);font-weight:700">ສຳຄັນທີ່ສຸດ!</span> ຖ້າບໍ່ຕັ້ງ ຮູບຈະບໍ່ຂຶ້ນ</div>
+      <div style="margin-bottom:9px"><b>4.</b> ກົດ <b>Copy link</b></div>
+      <div style="margin-bottom:9px"><b>5.</b> ກັບມາວາງໃນຊ່ອງລິ້ງຮູບ → ລະບົບແປງໃຫ້ເອງ</div>
+      <div style="background:#F2FBFA;border-radius:10px;padding:12px;margin-top:10px;font-size:12.5px;color:var(--teal-deep)"><b>ເຄັດລັບ:</b> ສ້າງໂຟນເດີ້ດຽວ ຕັ້ງແຊຣ໌ “Anyone with the link” ທັງໂຟນເດີ້ → ຮູບທຸກອັນທີ່ໃສ່ໃນນັ້ນຈະໃຊ້ໄດ້ໝົດ ບໍ່ຕ້ອງຕັ້ງເທື່ອລະຮູບ</div>
+    </div>
+    <button class="btn-save" onclick="closeDriveGuide()">ເຂົ້າໃຈແລ້ວ</button>
+  </div></div>`;
+  const w=document.createElement('div'); w.id='driveGuideRoot'; w.innerHTML=html; document.body.appendChild(w);
+}
+function closeDriveGuide(){ const w=$('driveGuideRoot'); if(w)w.remove(); }
 
 /* recipe rows */
 function renderRecipeRows(){
