@@ -569,6 +569,7 @@ let state={
   expenseCats:DB.get('expenseCats',null),  // ປະເພດລາຍຈ່າຍ (ເພີ່ມເອງ)
   incomeCats:DB.get('incomeCats',null),    // ປະເພດລາຍຮັບ (ເພີ່ມເອງ)
   discountPresets:DB.get('discountPresets',null),  // ລາຍການສ່ວນຫຼຸດສຳເລັດຮູບ
+  trash:DB.get('trash',[]),                        // ★ ຖັງຂີ້ເຫຍື້ອ (ກູ້ຄືນໄດ້)
   cart:{}, channel:'walkin', payment:'cash',
   discount:{type:'none',value:0,reason:''},
   viewMonth:(new Date()).getMonth(), viewYear:(new Date()).getFullYear(),
@@ -622,6 +623,7 @@ function seedDefaults(){
   if(!state.expenseCats){ state.expenseCats=DEFAULT_EXPENSE_CATS.map(c=>({...c})); DB.set('expenseCats',state.expenseCats); }
   if(!state.incomeCats){ state.incomeCats=DEFAULT_INCOME_CATS.map(c=>({...c})); DB.set('incomeCats',state.incomeCats); }
   if(!state.discountPresets){ state.discountPresets=DEFAULT_DISCOUNTS.map(d=>({...d})); DB.set('discountPresets',state.discountPresets); }
+  if(!Array.isArray(state.trash)){ state.trash=[]; DB.set('trash',state.trash); }
 
   // ★ Migration: ຍ້າຍ ingredient ຈາກໂຄງສ້າງເກົ່າ (purchaseUnit/qtyPerPurchase) ມາໃໝ່ (unit/qtyPerUnit/used)
   let migrated=false;
@@ -651,6 +653,7 @@ function save(){
   DB.set('menuCats',state.menuCats); DB.set('ingCats',state.ingCats);
   DB.set('expenseCats',state.expenseCats); DB.set('incomeCats',state.incomeCats);
   DB.set('discountPresets',state.discountPresets);
+  DB.set('trash',state.trash||[]);
   SYNC.markDirty();       // ★ ບອກ sync layer ວ່າຂໍ້ມູນປ່ຽນ → push ຂຶ້ນ cloud + ແຈ້ງແທັບອື່ນ
 }
 
@@ -661,7 +664,89 @@ function save(){
    2) Cross-tab (BroadcastChannel)— ຫຼາຍແທັບ/ໜ້າຕ່າງ ໃນເຄື່ອງດຽວ ຣຽວທາມ
    3) Cloud (Firebase Firestore)  — ຫຼາຍເຄື່ອງແທ້ ຣຽວທາມ (ຕ້ອງໃສ່ config)
    ============================================================ */
-const SYNC_KEYS=['shop','menu','ingredients','orders','expenses','incomes','savedNames','menuCats','ingCats','expenseCats','incomeCats','discountPresets'];
+const SYNC_KEYS=['shop','menu','ingredients','orders','expenses','incomes','savedNames','menuCats','ingCats','expenseCats','incomeCats','discountPresets','trash'];
+
+/* ★★★ ສະຖາປັດຕະຍະກຳກັນຂໍ້ມູນຫາຍ (v4)
+   MERGE_KEYS = ລາຍການທີ່ມີ id → ຊິ້ງແບບ "ລວມທີລະລາຍການ" (union by id)
+                ເຄື່ອງທີ່ບໍ່ມີບິນ ຈະ "ລຶບ" ບິນຂອງເຄື່ອງອື່ນບໍ່ໄດ້ເດັດຂາດ
+   REPLACE_KEYS = ຄ່າຕັ້ງ → ທັບໄດ້ ແຕ່ຫ້າມທັບດ້ວຍຄ່າຫວ່າງ
+   trash = ຖັງຂີ້ເຫຍື້ອ (tombstone) → ການລຶບຈິງຕ້ອງຜ່ານທີ່ນີ້ ແລະ ກູ້ຄືນໄດ້ */
+const MERGE_KEYS=['orders','expenses','incomes','menu','ingredients'];
+const REPLACE_KEYS=['shop','savedNames','menuCats','ingCats','expenseCats','incomeCats','discountPresets'];
+const TRASH_KEEP_DAYS=60;
+
+function stamp(rec){ if(rec&&typeof rec==='object') rec.updatedAt=Date.now(); return rec; }
+function trashIdSet(){ const s=new Set(); (state.trash||[]).forEach(t=>{ if(t&&t.id) s.add(t.id); }); return s; }
+/* ລວມ 2 ລາຍການຕາມ id — ບໍ່ມີວັນເສຍລາຍການໃດ (ໃໝ່ກວ່າຊະນະ) */
+function mergeById(cur,inc,tIds){
+  const map={};
+  (Array.isArray(cur)?cur:[]).forEach(r=>{ if(r&&r.id) map[r.id]=r; });
+  (Array.isArray(inc)?inc:[]).forEach(r=>{
+    if(!r||!r.id) return;
+    const e=map[r.id];
+    if(!e){ map[r.id]=r; return; }
+    if((r.updatedAt||0) > (e.updatedAt||0)) map[r.id]=r;   // ໃໝ່ກວ່າຊະນະ
+  });
+  let out=Object.keys(map).map(k=>map[k]);
+  if(tIds && tIds.size) out=out.filter(r=>!tIds.has(r.id));  // ເອົາທີ່ຢູ່ຖັງຂີ້ເຫຍື້ອອອກ
+  return out;
+}
+/* ຍ້າຍເຂົ້າຖັງຂີ້ເຫຍື້ອ (ແທນການລຶບຖິ້ມ) */
+function trashPut(type,rec){
+  if(!rec||!rec.id) return;
+  state.trash=state.trash||[];
+  if(state.trash.some(t=>t.id===rec.id)) return;
+  state.trash.push({id:rec.id,type,at:Date.now(),updatedAt:Date.now(),rec:JSON.parse(JSON.stringify(rec))});
+}
+function trashCollectionOf(type){
+  return {order:'orders',expense:'expenses',income:'incomes',menu:'menu',ingredient:'ingredients'}[type]||null;
+}
+function trashPurgeOld(){
+  const cut=Date.now()-TRASH_KEEP_DAYS*86400000;
+  const before=(state.trash||[]).length;
+  state.trash=(state.trash||[]).filter(t=>(t.at||0)>cut);
+  return before-(state.trash||[]).length;
+}
+function trashRestore(idx){
+  const t=(state.trash||[])[idx]; if(!t) return;
+  const coll=trashCollectionOf(t.type); if(!coll){ toast('ກູ້ຄືນບໍ່ໄດ້',true); return; }
+  state.trash.splice(idx,1);                       // ເອົາອອກຈາກຖັງກ່ອນ
+  state[coll]=state[coll]||[];
+  if(!state[coll].some(x=>x.id===t.id)) state[coll].push(stamp(t.rec));
+  if(coll==='orders') state.orders.sort((a,b)=>new Date(b.time)-new Date(a.time));
+  save(); refresh();
+  toast('ກູ້ຄືນແລ້ວ ✓');
+}
+function trashDestroy(idx){
+  const t=(state.trash||[])[idx]; if(!t) return;
+  t.purged=true; t.at=0;                            // ເກັບ tombstone ໄວ້ ບໍ່ໃຫ້ຟື້ນຈາກ cloud
+  save(); refresh(); toast('ລຶບຖາວອນແລ້ວ');
+}
+function openTrash(){
+  const list=(state.trash||[]).slice().sort((a,b)=>(b.at||0)-(a.at||0));
+  const label={order:'ບິນຂາຍ',expense:'ລາຍຈ່າຍ',income:'ລາຍຮັບ',menu:'ເມນູ',ingredient:'ວັດຖຸດິບ'};
+  const rows=list.length?list.map(t=>{
+    const i=state.trash.indexOf(t);
+    const d=new Date(t.at||0);
+    const ts=t.at?(d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')):'—';
+    let desc='';
+    if(t.type==='order') desc=(t.rec.items||[]).map(x=>x.emoji+x.name+'×'+x.qty).join(', ')+' · '+fmt(t.rec.total)+' ກີບ';
+    else if(t.type==='expense'||t.type==='income') desc=esc(t.rec.note||'')+' · '+fmt(t.rec.amount)+' ກີບ';
+    else desc=esc(t.rec.name||'');
+    return `<div class="list-item">
+      <div class="li-ico" style="background:var(--pastel-peach)">🗑</div>
+      <div class="li-body"><div class="li-t">${label[t.type]||t.type} · ${ts}</div><div class="li-s">${desc}</div></div>
+      <button class="lu-btn" style="padding:0 12px" onclick="trashRestore(${i})">ກູ້</button>
+    </div>`;
+  }).join(''):`<div class="tiny-note" style="padding:14px">ຖັງຂີ້ເຫຍື້ອຫວ່າງ</div>`;
+  const html=`<div class="modal-back" style="z-index:285" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>🗑 ຖັງຂີ້ເຫຍື້ອ (ກູ້ຄືນໄດ້)</h3>
+    <p class="msub">ທຸກສິ່ງທີ່ລຶບຈະມານອນທີ່ນີ້ ${TRASH_KEEP_DAYS} ວັນ · ກູ້ຄືນໄດ້ຕະຫຼອດ</p>
+    ${rows}
+    <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
 
 /* ★ config Cloud ທີ່ຝັງໄວ້ໃນໄຟລ໌ (ຖ້າຕ້ອງການ hardcode) — ປົກກະຕິ null, ໃຊ້ share-link ແທນ */
 const EMBEDDED_FB_CONFIG=null;
@@ -756,6 +841,7 @@ const SYNC={
     parts['expenses']={expenses:DB.get('expenses',[])};
     parts['incomes']={incomes:DB.get('incomes',[])};
     parts['misc']={savedNames:DB.get('savedNames',[]),menuCats:DB.get('menuCats',[]),ingCats:DB.get('ingCats',[]),expenseCats:DB.get('expenseCats',[]),incomeCats:DB.get('incomeCats',[]),discountPresets:DB.get('discountPresets',[])};
+    parts['trash']={trash:DB.get('trash',[])};
     // ບິນຂາຍ → ແບ່ງຕາມເດືອນ
     const orders=DB.get('orders',[])||[];
     const byMonth={};
@@ -765,19 +851,28 @@ const SYNC={
       (byMonth[key]=byMonth[key]||[]).push(o);
     });
     Object.keys(byMonth).forEach(k=>{ parts[k]={orders:byMonth[k]}; });
-    if(Object.keys(byMonth).length===0) parts['orders_empty']={orders:[]};
+    // ★ ບໍ່ສ້າງ 'orders_empty' ອີກ — ມັນເຄີຍເຮັດໃຫ້ເຄື່ອງອື່ນລຶບບິນຖິ້ມ
     return parts;
   },
   // ນຳ parts ຈາກ cloud ມາປະກອບຄືນເປັນ state
+  // ★★★ FIX ບັກຂໍ້ມູນຫາຍ: ຫ້າມຕັ້ງ orders:[] ລ່ວງໜ້າ! ຖ້າ cloud ບໍ່ມີ orders_* ເລີຍ
+  //     ຕ້ອງ "ບໍ່ແຕະ" orders ໃນເຄື່ອງ (undefined) — ບໍ່ແມ່ນທັບດ້ວຍ [] ເຊິ່ງລຶບຂໍ້ມູນ
   _mergeParts(partMap){
-    const merged={orders:[]};
+    const merged={};
+    let sawOrderPart=false; const collected=[];
     Object.keys(partMap).forEach(pid=>{
       const p=partMap[pid]; if(!p) return;
-      if(pid.indexOf('orders_')===0){ if(Array.isArray(p.orders)) merged.orders=merged.orders.concat(p.orders); }
-      else Object.keys(p).forEach(k=>{ if(p[k]!==undefined && p[k]!==null) merged[k]=p[k]; });
+      if(pid.indexOf('orders_')===0){
+        if(Array.isArray(p.orders)){ sawOrderPart=true; for(const o of p.orders) collected.push(o); }
+      } else {
+        Object.keys(p).forEach(k=>{ if(p[k]!==undefined && p[k]!==null) merged[k]=p[k]; });
+      }
     });
-    merged.orders.sort((a,b)=>new Date(b.time)-new Date(a.time)); // ໃໝ່ສຸດກ່ອນ
-    return merged;
+    if(sawOrderPart){
+      collected.sort((a,b)=>new Date(b.time)-new Date(a.time));
+      merged.orders=collected;
+    }
+    return merged;   // ບໍ່ມີ key = ບໍ່ແຕະຂໍ້ມູນນັ້ນ
   },
 
   _broadcast(){
@@ -786,12 +881,40 @@ const SYNC={
     try{ localStorage.setItem('pos_syncPing', Date.now()+'_'+this.deviceId); }catch(e){}
   },
 
-  // ນຳ bundle (ຈາກ tab/cloud) ມາຂຽນລົງ local + state ໂດຍບໍ່ push ກັບ
+  // ★★★ ນຳຂໍ້ມູນຈາກ cloud/ແທັບອື່ນ ມາ "ລວມ" (ບໍ່ແມ່ນ "ທັບ")
+  // ຮັບປະກັນ: ບໍ່ມີວັນເສຍລາຍການໃດ ຈາກການຊິ້ງ ເດັດຂາດ
   _applyBundle(bundle,source){
     if(!bundle) return;
+    snapshotSave('ກ່ອນຮັບຈາກ '+(source==='cloud'?'Cloud':'ແທັບອື່ນ'));
     this.applyingRemote=true; this.suppressBroadcast=true;
     try{
-      SYNC_KEYS.forEach(k=>{ if(bundle[k]!==undefined && bundle[k]!==null) DB.set(k,bundle[k]); });
+      // 1) ລວມຖັງຂີ້ເຫຍື້ອກ່ອນ (ບອກວ່າອັນໃດຖືກລຶບຢ່າງຕັ້ງໃຈ)
+      if(bundle.trash!==undefined && bundle.trash!==null){
+        DB.set('trash', mergeById(DB.get('trash',[]), bundle.trash));
+      }
+      state.trash=DB.get('trash',[])||[];
+      const tIds=new Set(); state.trash.forEach(t=>{ if(t&&t.id) tIds.add(t.id); });
+
+      // 2) ລາຍການທີ່ມີ id → ລວມທີລະລາຍການ (union) — ບໍ່ມີວັນຫາຍ
+      MERGE_KEYS.forEach(k=>{
+        const inc=bundle[k];
+        if(inc===undefined || inc===null) return;
+        const merged=mergeById(DB.get(k,[]), inc, tIds);
+        if(k==='orders') merged.sort((a,b)=>new Date(b.time)-new Date(a.time));
+        DB.set(k, merged);
+      });
+
+      // 3) ຄ່າຕັ້ງ → ທັບໄດ້ ແຕ່ຫ້າມທັບດ້ວຍຄ່າຫວ່າງ
+      REPLACE_KEYS.forEach(k=>{
+        const inc=bundle[k];
+        if(inc===undefined || inc===null) return;
+        if(Array.isArray(inc) && inc.length===0){
+          const cur=DB.get(k,null);
+          if(Array.isArray(cur) && cur.length>0) return;   // ປະຕິເສດການທັບດ້ວຍຫວ່າງ
+        }
+        DB.set(k,inc);
+      });
+
       this._reloadLocalIntoState();
       this.lastPull=Date.now();
       if(currentPage&&!$('app').classList.contains('hidden')) refreshSoft();
@@ -1026,6 +1149,402 @@ function doStripOrderImages(){
   toast(freed>0?('ລ້າງຮູບຂີ້ເຫຍື້ອໃນບິນ '+Math.round(freed/1024)+'KB ✓'):'ບິນສະອາດຢູ່ແລ້ວ');
 }
 
+/* ============================================================
+   ★★★ SNAPSHOT (ຈຸດກູ້ຄືນ) — ເກັບອັດຕະໂນມັດ ກ່ອນເຫດການສ່ຽງ
+   ============================================================ */
+const SNAP_MAX=8;
+function snapshotSave(reason){
+  try{
+    const snaps=DB.get('snaps',[])||[];
+    const data={};
+    SYNC_KEYS.forEach(k=>{ data[k]=DB.get(k,null); });
+    const counts={orders:(data.orders||[]).length, expenses:(data.expenses||[]).length, incomes:(data.incomes||[]).length, menu:(data.menu||[]).length};
+    // ຖ້າຫວ່າງໝົດ ບໍ່ຕ້ອງເກັບ (ບໍ່ມີປະໂຫຍດ)
+    if(counts.orders===0&&counts.expenses===0&&counts.incomes===0) return;
+    // ຖ້າຄືກັບອັນຫຼ້າສຸດ ບໍ່ຕ້ອງເກັບຊ້ຳ
+    const last=snaps[0];
+    if(last && last.counts && last.counts.orders===counts.orders && last.counts.expenses===counts.expenses && last.counts.incomes===counts.incomes) return;
+    snaps.unshift({at:Date.now(),reason:reason||'ອັດຕະໂນມັດ',counts,data});
+    while(snaps.length>SNAP_MAX) snaps.pop();
+    localStorage.setItem('pos_snaps',JSON.stringify(snaps));
+  }catch(e){ /* ເນື້ອທີ່ເຕັມ → ຂ້າມ ບໍ່ໃຫ້ລົບກວນການໃຊ້ງານ */ }
+}
+function snapshotList(){ return DB.get('snaps',[])||[]; }
+function restoreSnapshot(idx){
+  const snaps=snapshotList(); const s=snaps[idx]; if(!s) return;
+  snapshotSave('ກ່ອນກູ້ຄືນ');
+  SYNC_KEYS.forEach(k=>{ if(s.data[k]!==undefined && s.data[k]!==null) DB.set(k,s.data[k]); });
+  SYNC._reloadLocalIntoState();
+  save(); closeModal(); refresh();
+  toast('ກູ້ຄືນສຳເລັດ ✓ ບິນ '+s.counts.orders+' · ຮັບ '+s.counts.incomes+' · ຈ່າຍ '+s.counts.expenses);
+}
+function openSnapshots(){
+  const snaps=snapshotList();
+  const rows=snaps.length?snaps.map((s,i)=>{
+    const d=new Date(s.at);
+    const ts=d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0');
+    return `<div class="list-item">
+      <div class="li-ico" style="background:var(--pastel-lav)">🕐</div>
+      <div class="li-body"><div class="li-t">${ts} · ${esc(s.reason)}</div>
+        <div class="li-s">ບິນ ${s.counts.orders} · ລາຍຮັບ ${s.counts.incomes} · ລາຍຈ່າຍ ${s.counts.expenses} · ເມນູ ${s.counts.menu}</div></div>
+      <button class="lu-btn" style="padding:0 12px" onclick="restoreSnapshot(${i})">ກູ້</button>
+    </div>`;
+  }).join(''):`<div class="tiny-note" style="padding:14px">ຍັງບໍ່ມີຈຸດກູ້ຄືນ</div>`;
+  const html=`<div class="modal-back" style="z-index:280" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>🕐 ຈຸດກູ້ຄືນ (ໃນເຄື່ອງ)</h3>
+    <p class="msub">ລະບົບເກັບອັດຕະໂນມັດກ່ອນເຫດການສ່ຽງ · ເລືອກຈຸດທີ່ຂໍ້ມູນຄົບ ແລ້ວກົດ "ກູ້"</p>
+    ${rows}
+    <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+
+/* ============================================================
+   ★★★ RESCUE — ກູ້ຂໍ້ມູນຈາກທຸກແຫຼ່ງ (ບໍ່ທຳລາຍຂໍ້ມູນ · ເອົາອັນຫຼາຍສຸດ)
+   ແຫຼ່ງ: (1) Cloud ຮູບແບບເກົ່າ (bundle)  (2) Cloud parts  (3) snapshot ໃນເຄື່ອງ
+   ============================================================ */
+async function rescueScan(){
+  const found=[];
+  // 1) snapshots ໃນເຄື່ອງ
+  snapshotList().forEach((s,i)=>{
+    found.push({src:'ໃນເຄື່ອງ (ຈຸດກູ້ຄືນ)',at:s.at,counts:s.counts,data:s.data,key:'snap'+i});
+  });
+  // 2) Cloud
+  const cfg=DB.get('fbConfig',null);
+  if(cfg){
+    try{
+      if(!window._fbmods){
+        const appMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js');
+        const fsMod=await import('https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js');
+        window._fbmods={appMod,fsMod};
+      }
+      const {initializeApp}=window._fbmods.appMod;
+      const {getFirestore,doc,getDoc,getDocs,collection}=window._fbmods.fsMod;
+      const app=initializeApp(cfg,'rescue_'+Date.now());
+      const db=getFirestore(app);
+      const storeId=DB.get('storeId',null)||EMBEDDED_STORE_ID;
+      // 2a) ★ ຮູບແບບເກົ່າ: pos_stores/{storeId} ມີ field 'bundle' — ໂຄດໃໝ່ເຊົາອ່ານ ຂໍ້ມູນຍັງຢູ່!
+      try{
+        const oldSnap=await getDoc(doc(db,'pos_stores',storeId));
+        if(oldSnap.exists() && oldSnap.data() && oldSnap.data().bundle){
+          const b=JSON.parse(oldSnap.data().bundle);
+          found.push({src:'☁️ Cloud (ຂໍ້ມູນເກົ່າ)',at:oldSnap.data().updatedAt||0,
+            counts:{orders:(b.orders||[]).length,expenses:(b.expenses||[]).length,incomes:(b.incomes||[]).length,menu:(b.menu||[]).length},
+            data:b,key:'cloudOld'});
+        }
+      }catch(e){}
+      // 2b) ຮູບແບບໃໝ່: parts
+      try{
+        const ps=await getDocs(collection(db,'pos_stores',storeId,'parts'));
+        const partMap={}; let n=0; let newest=0;
+        ps.forEach(d=>{ try{ partMap[d.id]=JSON.parse(d.data().data); n++; newest=Math.max(newest,d.data().updatedAt||0); }catch(_){} });
+        if(n>0){
+          const m=SYNC._mergeParts(partMap);
+          found.push({src:'☁️ Cloud (ປັດຈຸບັນ)',at:newest,
+            counts:{orders:(m.orders||[]).length,expenses:(m.expenses||[]).length,incomes:(m.incomes||[]).length,menu:(m.menu||[]).length},
+            data:m,key:'cloudNew'});
+        }
+      }catch(e){}
+    }catch(e){ /* ຕໍ່ cloud ບໍ່ໄດ້ */ }
+  }
+  return found;
+}
+let _rescueFound=[];
+async function openRescue(){
+  const html0=`<div class="modal-back" style="z-index:290"><div class="modal">
+    <div class="modal-grip"></div><h3>🛟 ກຳລັງຄົ້ນຫາຂໍ້ມູນ...</h3>
+    <p class="msub">ກຳລັງກວດ: ຈຸດກູ້ຄືນໃນເຄື່ອງ · Cloud ຮູບແບບເກົ່າ · Cloud ປັດຈຸບັນ</p>
+    <div style="text-align:center;padding:24px;font-size:34px">⏳</div></div></div>`;
+  $('modalRoot').innerHTML=html0;
+  _rescueFound=await rescueScan();
+  // ປັດຈຸບັນໃນເຄື່ອງ (ເພື່ອປຽບທຽບ)
+  const cur={orders:(state.orders||[]).length,expenses:(state.expenses||[]).length,incomes:(state.incomes||[]).length,menu:(state.menu||[]).length};
+  const rows=_rescueFound.length?_rescueFound.map((f,i)=>{
+    const d=f.at?new Date(f.at):null;
+    const ts=d?(d.getDate()+'/'+(d.getMonth()+1)+' '+String(d.getHours()).padStart(2,'0')+':'+String(d.getMinutes()).padStart(2,'0')):'—';
+    const better=(f.counts.orders>cur.orders)||(f.counts.incomes>cur.incomes)||(f.counts.expenses>cur.expenses);
+    return `<div class="list-item" ${better?'style="border:2px solid var(--teal);border-radius:14px"':''}>
+      <div class="li-ico" style="background:${better?'var(--pastel-mint)':'#F0F0F0'}">${better?'✨':'📄'}</div>
+      <div class="li-body"><div class="li-t">${esc(f.src)} ${better?'<span class="chip cat">ດີກວ່າປັດຈຸບັນ</span>':''}</div>
+        <div class="li-s">${ts} · ບິນ <b>${f.counts.orders}</b> · ຮັບ <b>${f.counts.incomes}</b> · ຈ່າຍ <b>${f.counts.expenses}</b> · ເມນູ ${f.counts.menu}</div></div>
+      <button class="lu-btn" style="padding:0 12px" onclick="rescueRestore(${i})">ກູ້</button>
+    </div>`;
+  }).join(''):`<div class="tiny-note" style="padding:14px">ບໍ່ພົບແຫຼ່ງກູ້ຄືນ — ລອງໃຊ້ໄຟລ໌ສຳຮອງ (.json) ທີ່ເຄີຍດາວໂຫຼດ</div>`;
+  const html=`<div class="modal-back" style="z-index:290" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>🛟 ກູ້ຂໍ້ມູນສຸກເສີນ</h3>
+    <p class="msub">ປັດຈຸບັນໃນເຄື່ອງ: ບິນ ${cur.orders} · ຮັບ ${cur.incomes} · ຈ່າຍ ${cur.expenses}</p>
+    <div class="tiny-note" style="text-align:left;margin-bottom:10px">ເລືອກແຫຼ່ງທີ່ຂໍ້ມູນຫຼາຍສຸດ (✨ = ດີກວ່າປັດຈຸບັນ) · <b>ການກູ້ຈະລວມຂໍ້ມູນ ບໍ່ລຶບຂອງເກົ່າ</b></div>
+    ${rows}
+    <button class="btn-save" style="margin-top:12px;background:linear-gradient(135deg,#5BA3D0,#3C7FA8)" onclick="triggerImport()">📂 ກູ້ຈາກໄຟລ໌ສຳຮອງ (.json)</button>
+    <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+/* ກູ້ແບບ MERGE — ລວມ ບໍ່ທັບ (ບິນ/ຮັບ/ຈ່າຍ ລວມກັນຕາມ id ບໍ່ຊ້ຳ) */
+function rescueRestore(i){
+  const f=_rescueFound[i]; if(!f) return;
+  snapshotSave('ກ່ອນກູ້ສຸກເສີນ');
+  const b=f.data;
+  const mergeById=(cur,inc)=>{
+    cur=Array.isArray(cur)?cur:[]; inc=Array.isArray(inc)?inc:[];
+    const seen={}; const out=[];
+    for(const x of cur.concat(inc)){ if(!x||!x.id) continue; if(seen[x.id]) continue; seen[x.id]=1; out.push(x); }
+    return out;
+  };
+  // ລວມລາຍການ (ບໍ່ເສຍຂອງໃໝ່ ບໍ່ເສຍຂອງເກົ່າ)
+  const orders=mergeById(state.orders,b.orders); orders.sort((a,c)=>new Date(c.time)-new Date(a.time));
+  const expenses=mergeById(state.expenses,b.expenses);
+  const incomes=mergeById(state.incomes,b.incomes);
+  const menu=mergeById(state.menu,b.menu);
+  const ingredients=mergeById(state.ingredients,b.ingredients);
+  DB.set('orders',orders); DB.set('expenses',expenses); DB.set('incomes',incomes);
+  DB.set('menu',menu); DB.set('ingredients',ingredients);
+  // ຄ່າຕັ້ງ/ປະເພດ — ໃຊ້ຂອງທີ່ກູ້ ຖ້າໃນເຄື່ອງບໍ່ມີ
+  ['shop','savedNames','menuCats','ingCats','expenseCats','incomeCats','discountPresets'].forEach(k=>{
+    const cur=DB.get(k,null);
+    const inc=b[k];
+    if(inc===undefined||inc===null) return;
+    if(cur===null || (Array.isArray(cur)&&cur.length===0)) DB.set(k,inc);
+  });
+  SYNC._reloadLocalIntoState();
+  seedDefaults(); save(); closeModal(); refresh();
+  toast('✓ ກູ້ສຳເລັດ · ບິນ '+orders.length+' · ຮັບ '+incomes.length+' · ຈ່າຍ '+expenses.length);
+}
+
+/* ============================================================
+   ★★★ ວາງຂໍ້ມູນກູ້ຄືນ (ຈາກ Firebase Console) — ຮັບໄດ້ທຸກຮູບແບບ
+   ============================================================ */
+function openPasteRestore(){
+  const storeId=DB.get('storeId','')||EMBEDDED_STORE_ID;
+  const html=`<div class="modal-back" style="z-index:295" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>📋 ວາງຂໍ້ມູນກູ້ຄືນ</h3>
+    <p class="msub">ດຶງຂໍ້ມູນຈາກ Firebase Console ດ້ວຍມື — ໃຊ້ໄດ້ເມື່ອປຸ່ມກູ້ອັດຕະໂນມັດຫາບໍ່ເຫັນ</p>
+    <div style="background:#F2FBFA;border-radius:12px;padding:13px;font-size:12.5px;line-height:1.95;color:var(--ink);margin-bottom:14px">
+      <b>ວິທີຫາຂໍ້ມູນເກົ່າ:</b><br>
+      <b>1.</b> ເປີດ <b>console.firebase.google.com</b> → ເລືອກໂປຣເຈັກ<br>
+      <b>2.</b> ເມນູຊ້າຍ → <b>Firestore Database</b><br>
+      <b>3.</b> ກົດ collection <b>pos_stores</b> → ກົດເອກະສານ <b>${esc(storeId)}</b><br>
+      <b>4.</b> ຈະເຫັນ field ຊື່ <b>bundle</b> (ຂໍ້ຄວາມຍາວໆ) ⬅️ <b style="color:var(--teal-deep)">ນີ້ຄືຂໍ້ມູນເກົ່າຂອງທ່ານ</b><br>
+      <b>5.</b> ກົດທີ່ຄ່າ → ກ໋ອບປີ້ທັງໝົດ → ວາງລົງຊ່ອງລຸ່ມນີ້<br>
+      <span style="color:var(--ink-soft)">ຫຼື ເປີດ <b>parts</b> ຂ້າງໃນ ແລ້ວກ໋ອບ field <b>data</b> ຂອງແຕ່ລະອັນ ມາວາງເທື່ອລະອັນກໍ່ໄດ້</span>
+    </div>
+    <div class="fg full" style="margin-bottom:12px"><label>ວາງຂໍ້ມູນທີ່ນີ້ (JSON)</label>
+      <textarea id="pasteBox" style="min-height:150px;font-family:monospace;font-size:11px" placeholder='{"orders":[...],"expenses":[...],"incomes":[...]}'></textarea></div>
+    <button class="btn-save" onclick="doPasteRestore()">🛟 ກູ້ຂໍ້ມູນຈາກຂໍ້ຄວາມນີ້</button>
+    <div class="tiny-note" style="text-align:left">ລະບົບຈະ <b>ລວມ</b> ກັບຂອງປັດຈຸບັນ ບໍ່ລຶບຫຍັງ · ວາງຫຼາຍເທື່ອໄດ້</div>
+    <button class="btn-ghost" onclick="closeModal()">ປິດ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function doPasteRestore(){
+  let raw=$('pasteBox').value.trim();
+  if(!raw){ toast('ວາງຂໍ້ມູນກ່ອນ',true); return; }
+  let obj=null;
+  try{
+    obj=JSON.parse(raw);
+    // ບາງເທື່ອ bundle ເປັນ "ຂໍ້ຄວາມ JSON ຊ້ອນ" → parse ຮອບສອງ
+    if(typeof obj==='string') obj=JSON.parse(obj);
+    // ຮູບແບບ {data:"..."} ຈາກ parts
+    if(obj && typeof obj.data==='string') obj=JSON.parse(obj.data);
+    // ຮູບແບບ {bundle:"..."} ຈາກເອກະສານເກົ່າ
+    if(obj && typeof obj.bundle==='string') obj=JSON.parse(obj.bundle);
+  }catch(e){ toast('ອ່ານຂໍ້ມູນບໍ່ໄດ້ — ກ໋ອບປີ້ໃຫ້ຄົບແລ້ວລອງໃໝ່',true); return; }
+  if(!obj||typeof obj!=='object'){ toast('ຂໍ້ມູນບໍ່ຖືກຮູບແບບ',true); return; }
+  const counts={orders:(obj.orders||[]).length,expenses:(obj.expenses||[]).length,incomes:(obj.incomes||[]).length,menu:(obj.menu||[]).length};
+  if(counts.orders+counts.expenses+counts.incomes+counts.menu===0){
+    toast('ຂໍ້ມູນນີ້ບໍ່ມີ ບິນ/ຮັບ/ຈ່າຍ/ເມນູ ເລີຍ',true); return;
+  }
+  _rescueFound=[{src:'ວາງດ້ວຍມື',at:Date.now(),counts,data:obj}];
+  rescueRestore(0);
+}
+
+/* ============================================================
+   ★★★ ສ້າງລາຍຈ່າຍຄືນຈາກສາງ — ໃຊ້ເມື່ອລາຍຈ່າຍຫາຍ ແຕ່ສາງຍັງຢູ່
+   (ສາງບອກໄດ້ວ່າຊື້ຫຍັງມາ ຈັກຫົວໜ່ວຍ ລາຄາເທົ່າໃດ)
+   ============================================================ */
+function openRebuildFromStock(){
+  const rows=state.ingredients.map((i,idx)=>{
+    const containers=i.qtyPerUnit>0?((i.stock+(i.used||0))/i.qtyPerUnit):0;
+    const value=containers*i.purchaseCost;
+    return {i,containers,value,idx};
+  }).filter(r=>r.value>0);
+  const total=rows.reduce((s,r)=>s+r.value,0);
+  const list=rows.map(r=>`<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:1px dashed var(--line);font-size:12.5px">
+    <span style="font-size:16px">${r.i.emoji}</span>
+    <div style="flex:1"><b>${esc(r.i.name)}</b><div style="font-size:11px;color:var(--ink-soft)">${r.containers.toFixed(1)} ${esc(r.i.unit)} × ${fmt(r.i.purchaseCost)}</div></div>
+    <b style="color:var(--expense)">${fmt(r.value)}</b>
+  </div>`).join('');
+  const html=`<div class="modal-back" style="z-index:295" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>🧾 ສ້າງລາຍຈ່າຍຄືນຈາກສາງ</h3>
+    <p class="msub">ລາຍຈ່າຍຫາຍ ແຕ່ສາງຍັງຢູ່ → ສາງບອກໄດ້ວ່າຊື້ຫຍັງມາແດ່</p>
+    <div style="max-height:210px;overflow-y:auto;margin-bottom:10px">${list||'<div class="tiny-note">ບໍ່ມີວັດຖຸດິບໃນສາງ</div>'}</div>
+    <div class="suggested-price" style="margin-bottom:12px"><span class="sp-l">ລວມ (ຈະສ້າງເປັນລາຍຈ່າຍ "ຊື້ເຂົ້າສາງ")</span><span class="sp-v">${kip(total)}</span></div>
+    <div class="fg full" style="margin-bottom:12px"><label>ລົງວັນທີ</label><input type="date" id="rbDate" value="${dateInputVal(null)}"></div>
+    <div class="tiny-note" style="text-align:left;margin-bottom:12px">⚠️ ນີ້ຄື <b>ການສ້າງຄືນຈາກຫຼັກຖານສາງ</b> ບໍ່ແມ່ນຂໍ້ມູນຕົ້ນສະບັບ · ຈະ<b>ບໍ່ເພີ່ມສະຕ໋ອກຊ້ຳ</b> (ສາງມີຢູ່ແລ້ວ) · ແກ້ໄຂ/ລຶບແຕ່ລະລາຍການໄດ້ພາຍຫຼັງ</div>
+    <button class="btn-save" onclick="doRebuildFromStock()">ສ້າງລາຍຈ່າຍ ${rows.length} ລາຍການ</button>
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function doRebuildFromStock(){
+  snapshotSave('ກ່ອນສ້າງລາຍຈ່າຍຄືນ');
+  const dateISO=$('rbDate').value?new Date($('rbDate').value+'T12:00:00').toISOString():new Date().toISOString();
+  let n=0,total=0;
+  state.ingredients.forEach(i=>{
+    const containers=i.qtyPerUnit>0?((i.stock+(i.used||0))/i.qtyPerUnit):0;
+    if(containers<=0||i.purchaseCost<=0) return;
+    const amount=containers*i.purchaseCost;
+    // stockLink.addBase=0 → ບໍ່ເພີ່ມສະຕ໋ອກຊ້ຳ (ສາງມີຢູ່ແລ້ວ) ແຕ່ຍັງນັບເປັນ "ຊື້ເຂົ້າສາງ" ທາງບັນຊີ
+    state.expenses.push({id:'e'+Date.now()+'_'+n, date:dateISO, category:'_inventory',
+      note:'ຊື້ '+i.name+' '+(Math.round(containers*10)/10)+' '+i.unit+' (ສ້າງຄືນຈາກສາງ)',
+      qty:Math.round(containers*10)/10, unitPrice:i.purchaseCost, amount, method:'cash',
+      stockLink:{ingredientId:i.id, containers:Math.round(containers*10)/10, unitCost:i.purchaseCost, addBase:0, baseUnit:i.baseUnit}});
+    n++; total+=amount;
+  });
+  save(); closeModal(); refresh();
+  toast(n>0?('ສ້າງລາຍຈ່າຍຄືນ '+n+' ລາຍການ · '+fmt(total)+' ກີບ ✓'):'ບໍ່ມີຫຍັງໃຫ້ສ້າງ');
+}
+
+/* ============================================================
+   ★★★ ນິຕິວິທະຍາ: ກູ້ບິນທີ່ຖືກລຶບ ຈາກຫຼັກຖານ "ໃຊ້ແລ້ວ" ໃນສາງ
+   ຫຼັກການ: ຕອນຂາຍ ລະບົບບວກ ing.used. ຖ້າບິນຖືກລຶບ ແຕ່ used ບໍ່ຖືກຣີເຊັດ
+   → used − (ສິ່ງທີ່ບິນທີ່ເຫຼືອໃຊ້) = ຫຼັກຖານຂອງບິນທີ່ຫາຍ
+   ============================================================ */
+function forensicMissing(){
+  const consumed={};
+  (state.orders||[]).forEach(o=>(o.items||[]).forEach(it=>{
+    (it.recipe||[]).forEach(r=>{ consumed[r.ingredientId]=(consumed[r.ingredientId]||0)+(r.amount||0)*it.qty; });
+  }));
+  const missing={};
+  (state.ingredients||[]).forEach(i=>{
+    const diff=(i.used||0)-(consumed[i.id]||0);
+    if(diff>0.001) missing[i.id]=diff;
+  });
+  return missing;
+}
+function forensicSolve(missing){
+  const menus=(state.menu||[]).map(m=>{
+    const rec={}; (m.recipe||[]).forEach(r=>rec[r.ingredientId]=r.amount);
+    return {id:m.id,name:m.name,emoji:m.emoji,price:m.price,rec};
+  });
+  const ids=Object.keys(missing);
+  if(!menus.length||!ids.length) return {q:menus.map(()=>0),menus,worst:0};
+  // ຄາດເດົາເບື້ອງຕົ້ນ: ໃຊ້ວັດຖຸດິບທີ່ມີໃນເມນູດຽວ (ຊີ້ຂາດ)
+  const guess=menus.map(()=>0);
+  ids.forEach(id=>{
+    const uses=[]; menus.forEach((m,k)=>{ if(m.rec[id]) uses.push(k); });
+    if(uses.length===1){ const k=uses[0]; const q=Math.round(missing[id]/menus[k].rec[id]); if(q>guess[k]) guess[k]=q; }
+  });
+  // ປັບຄ່າແບບ coordinate descent ໃຫ້ພໍດີທີ່ສຸດ
+  const score=(q)=>{
+    let err=0;
+    for(const id of ids){
+      let pred=0; menus.forEach((m,k)=>{ pred+=(m.rec[id]||0)*q[k]; });
+      const act=missing[id]; const denom=Math.max(Math.abs(act),1);
+      const rel=(pred-act)/denom; err+=rel*rel;
+    }
+    return err;
+  };
+  let q=guess.slice(); let cur=score(q);
+  for(let pass=0;pass<60;pass++){
+    let improved=false;
+    for(let k=0;k<q.length;k++){
+      for(const d of [-1,1]){
+        const t=q.slice(); t[k]=Math.max(0,t[k]+d);
+        const s=score(t);
+        if(s<cur-1e-9){ q=t; cur=s; improved=true; }
+      }
+    }
+    if(!improved) break;
+  }
+  // ຄວາມຄາດເຄື່ອນສູງສຸດ
+  let worst=0;
+  for(const id of ids){
+    let pred=0; menus.forEach((m,k)=>{ pred+=(m.rec[id]||0)*q[k]; });
+    const act=missing[id]; const rel=Math.abs(pred-act)/Math.max(Math.abs(act),1);
+    if(rel>worst)worst=rel;
+  }
+  return {q,menus,worst};
+}
+function openForensicRebuild(){
+  const missing=forensicMissing();
+  const nMiss=Object.keys(missing).length;
+  if(nMiss===0){
+    const html=`<div class="modal-back" style="z-index:295" onclick="if(event.target===this)closeModal()"><div class="modal">
+      <div class="modal-grip"></div><h3>🔬 ກູ້ບິນຈາກຫຼັກຖານສາງ</h3>
+      <p class="msub">ບໍ່ພົບຫຼັກຖານບິນທີ່ຫາຍ — ຊ່ອງ "ໃຊ້ແລ້ວ" ໃນສາງ ຕົງກັບບິນທີ່ມີຢູ່ແລ້ວ</p>
+      <div class="tiny-note" style="text-align:left">ໝາຍຄວາມວ່າ: ບໍ່ມີບິນຫາຍ ຫຼື "ໃຊ້ແລ້ວ" ຖືກຣີເຊັດໄປແລ້ວ (ກູ້ດ້ວຍວິທີນີ້ບໍ່ໄດ້)</div>
+      <button class="btn-ghost" onclick="closeModal()">ປິດ</button></div></div>`;
+    $('modalRoot').innerHTML=html; return;
+  }
+  const sol=forensicSolve(missing);
+  window._forensicSol=sol;
+  const evid=Object.keys(missing).slice(0,8).map(id=>{
+    const i=findIng(id); if(!i)return '';
+    return `<div style="display:flex;justify-content:space-between;font-size:11.5px;padding:3px 0"><span>${i.emoji} ${esc(i.name)}</span><b style="color:var(--teal-deep)">ຫາຍ ${fmt(missing[id])} ${esc(i.baseUnit)}</b></div>`;
+  }).join('');
+  const rows=sol.menus.map((m,k)=>`<div style="display:flex;align-items:center;gap:8px;padding:8px 0;border-bottom:1px dashed var(--line)">
+    <span style="font-size:18px">${m.emoji}</span>
+    <div style="flex:1;min-width:0"><div style="font-size:12.5px;font-weight:700;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(m.name)}</div><div style="font-size:11px;color:var(--ink-soft)">${fmt(m.price)} ກີບ/ຈອກ</div></div>
+    <div class="qty-ctrl" style="gap:6px"><button onclick="fxAdj(${k},-1)">−</button><span id="fxQ${k}" style="min-width:22px;text-align:center;font-weight:800">${sol.q[k]}</span><button onclick="fxAdj(${k},1)">＋</button></div>
+  </div>`).join('');
+  const total=sol.q.reduce((s,q,k)=>s+q*sol.menus[k].price,0);
+  const cups=sol.q.reduce((s,q)=>s+q,0);
+  const conf=sol.worst<0.1?['ສູງຫຼາຍ','#2FA8A0']:sol.worst<0.35?['ດີ','#2FA8A0']:['ປານກາງ','#E0A64C'];
+  const html=`<div class="modal-back" style="z-index:295" onclick="if(event.target===this)closeModal()"><div class="modal">
+    <div class="modal-grip"></div><h3>🔬 ກູ້ບິນຈາກຫຼັກຖານສາງ</h3>
+    <p class="msub">ຊ່ອງ "ໃຊ້ແລ້ວ" ບໍ່ຖືກລຶບພ້ອມບິນ → ບອກໄດ້ວ່າຂາຍຫຍັງໄປແດ່</p>
+    <div style="background:#F2FBFA;border-radius:12px;padding:12px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:var(--teal-deep);margin-bottom:6px">🔍 ຫຼັກຖານ: ວັດຖຸດິບທີ່ຫາຍໄປໂດຍບໍ່ມີບິນ</div>
+      ${evid}${nMiss>8?`<div style="font-size:11px;color:var(--ink-soft);margin-top:4px">...ແລະ ອີກ ${nMiss-8} ລາຍການ</div>`:''}
+    </div>
+    <div class="divider-lbl" style="margin:6px 0 8px">ຄິດໄລ່ໄດ້ວ່າຂາຍໄປ (ປັບແກ້ໄດ້)</div>
+    ${rows}
+    <div class="suggested-price" style="margin-top:12px"><span class="sp-l">ລວມ <span id="fxCups">${cups}</span> ຈອກ</span><span class="sp-v" id="fxTotal">${kip(total)}</span></div>
+    <div style="display:flex;justify-content:center;gap:6px;margin-top:8px;font-size:11.5px"><span style="color:var(--ink-soft)">ຄວາມແໜ້ນຂອງຫຼັກຖານ:</span><b style="color:${conf[1]}">${conf[0]}</b></div>
+    <div class="fg full" style="margin-top:12px"><label>ລົງວັນທີໃຫ້ບິນທີ່ສ້າງຄືນ</label><input type="date" id="fxDate" value="${dateInputVal(null)}"></div>
+    <div class="tiny-note" style="text-align:left;margin:10px 0">⚠️ ນີ້ຄື <b>ການສ້າງຄືນຈາກຫຼັກຖານ</b> ບໍ່ແມ່ນບິນຕົ້ນສະບັບ · ເວລາ/ຊ່ອງທາງ ບໍ່ຮູ້ແທ້ · <b>ຈະບໍ່ຫັກສະຕ໋ອກຊ້ຳ</b> (ຫັກໄປແລ້ວ) · ແກ້/ລຶບແຕ່ລະບິນໄດ້ພາຍຫຼັງ</div>
+    <button class="btn-save" onclick="doForensicRebuild()">🛟 ສ້າງບິນຄືນ</button>
+    <button class="btn-ghost" onclick="closeModal()">ຍົກເລີກ</button>
+  </div></div>`;
+  $('modalRoot').innerHTML=html;
+}
+function fxAdj(k,d){
+  const sol=window._forensicSol; if(!sol)return;
+  sol.q[k]=Math.max(0,sol.q[k]+d);
+  const el=$('fxQ'+k); if(el)el.textContent=sol.q[k];
+  const total=sol.q.reduce((s,q,i)=>s+q*sol.menus[i].price,0);
+  const cups=sol.q.reduce((s,q)=>s+q,0);
+  const t=$('fxTotal'); if(t)t.textContent=kip(total);
+  const c=$('fxCups'); if(c)c.textContent=cups;
+}
+function doForensicRebuild(){
+  const sol=window._forensicSol; if(!sol)return;
+  const cups=sol.q.reduce((s,q)=>s+q,0);
+  if(cups<=0){ toast('ໃສ່ຈຳນວນກ່ອນ',true); return; }
+  snapshotSave('ກ່ອນສ້າງບິນຄືນ');
+  const base=$('fxDate').value?new Date($('fxDate').value+'T10:00:00'):new Date();
+  const y=base.getFullYear(), mo=base.getMonth();
+  let no=nextOrderNo(y,mo);
+  let made=0,rev=0;
+  sol.menus.forEach((mm,k)=>{
+    const qty=sol.q[k]; if(qty<=0) return;
+    const m=state.menu.find(x=>x.id===mm.id); if(!m) return;
+    // ສ້າງ 1 ບິນຕໍ່ 1 ເມນູ (ລວມຈຳນວນ) — ງ່າຍຕໍ່ການກວດ/ແກ້
+    const item={id:m.id,name:m.name,emoji:m.emoji,price:m.price,cost:Math.round(totalCost(m)),qty,recipe:(m.recipe||[]).map(r=>({...r}))};
+    const total=item.price*qty, cost=item.cost*qty;
+    const t=new Date(base.getTime()+made*60000);
+    state.orders.unshift({id:'o'+Date.now()+'_'+made, no:no++, time:t.toISOString(),
+      items:[item], subtotal:total, discount:0, discountInfo:null, total, cost, profit:total-cost,
+      channel:'walkin', payment:'cash', rebuilt:true});
+    made++; rev+=total;
+  });
+  // ★ ບໍ່ຫັກສະຕ໋ອກຊ້ຳ — ຂອງຈິງຖືກຫັກໄປແລ້ວຕອນຂາຍຄັ້ງທຳອິດ (used ຍັງຢູ່)
+  state.orders.sort((a,b)=>new Date(b.time)-new Date(a.time));
+  save(); closeModal(); refresh();
+  toast('ສ້າງບິນຄືນ '+made+' ໃບ · '+fmt(cups)+' ຈອກ · '+fmt(rev)+' ກີບ ✓');
+}
+
 /* ---------- EXPORT / IMPORT / RECOVERY ---------- */
 function exportData(){
   const bundle={_meta:{app:'pos',ver:3,exportedAt:new Date().toISOString(),device:SYNC.deviceId}};
@@ -1037,6 +1556,7 @@ function exportData(){
   a.href=url; a.download='pos-backup-'+d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0')+'.json';
   document.body.appendChild(a); a.click(); document.body.removeChild(a);
   setTimeout(()=>URL.revokeObjectURL(url),1000);
+  DB.set('lastExport',Date.now());
   toast('ດາວໂຫຼດໄຟລ໌ສຳຮອງແລ້ວ ✓');
 }
 function importDataFile(file){
@@ -1045,11 +1565,12 @@ function importDataFile(file){
     try{
       const bundle=JSON.parse(e.target.result);
       if(!bundle||typeof bundle!=='object') throw new Error('ໄຟລ໌ບໍ່ຖືກຕ້ອງ');
+      snapshotSave('ກ່ອນອິມພອດໄຟລ໌');
       let n=0;
       SYNC_KEYS.forEach(k=>{ if(bundle[k]!==undefined && bundle[k]!==null){ DB.set(k,bundle[k]); n++; } });
       SYNC._reloadLocalIntoState();
       seedDefaults();
-      save();               // push ຂຶ້ນ cloud + ແທັບອື່ນ
+      save();
       closeModal(); refresh();
       toast('ກູ້ຂໍ້ມູນສຳເລັດ ('+n+' ໝວດ) ✓');
     }catch(err){ toast('ອິມພອດຜິດພາດ: '+(err.message||err),true); }
@@ -1151,6 +1672,7 @@ function deductStock(item,qty){
       const take=Math.min(amt, ing.stock);       // ຫັກໄດ້ຫຼາຍສຸດເທົ່າທີ່ເຫຼືອ
       ing.stock=Math.max(0, ing.stock-amt);
       ing.used=(ing.used||0)+take;               // ບັນທຶກ "ໃຊ້ແລ້ວ"
+      stamp(ing);
     }
   });
 }
@@ -1185,7 +1707,7 @@ function enterApp(){
   DB.set('session',true); seedDefaults(); nav('sell');
 }
 function logout(){ DB.set('session',false); $('app').classList.add('hidden'); $('loginScreen').classList.remove('hidden'); state.cart={}; }
-window.addEventListener('load',()=>{ seedDefaults(); SYNC.init(); if(state.user&&DB.get('session',false)) enterApp(); });
+window.addEventListener('load',()=>{ seedDefaults(); trashPurgeOld(); snapshotSave('ເປີດແອັບ'); SYNC.init(); if(state.user&&DB.get('session',false)) enterApp(); });
 
 /* ============================================================
    NAV
@@ -1425,7 +1947,7 @@ function doCheckout(){
   items.forEach(it=>{ const m=state.menu.find(x=>x.id===it.id); deductStock(m,it.qty); });
   const now=new Date(); const no=nextOrderNo(now.getFullYear(),now.getMonth());
   const order={id:'o'+Date.now(),no,time:now.toISOString(),items,subtotal,discount:disc,discountInfo:(disc>0?{type:d.type,value:d.value,reason:d.reason}:null),total,cost:totalCostSum,profit:total-totalCostSum,channel:state.channel,payment:state.payment};
-  state.orders.unshift(order);
+  stamp(order); state.orders.unshift(order);
   save(); state.cart={}; state.discount={type:'none',value:0,reason:''};
   showReceipt(order);
   toast('ຂາຍ '+orderCode(order)+' ສຳເລັດ · ຕັດສະຕ໋ອກແລ້ວ');
@@ -1495,8 +2017,9 @@ function confirmVoidOrder(orderId){
       }
     });
   });
+  trashPut('order',order);                          // ★ ເຂົ້າຖັງຂີ້ເຫຍື້ອ ກູ້ຄືນໄດ້
   state.orders=state.orders.filter(o=>o.id!==orderId);
-  save(); closeModal(); refresh(); toast('ຍົກເລີກບິນ '+orderCode(order)+' ແລ້ວ · ຄືນສະຕ໋ອກແລ້ວ');
+  save(); closeModal(); refresh(); toast('ຍົກເລີກບິນ '+orderCode(order)+' · ຄືນສະຕ໋ອກ · ກູ້ຄືນໄດ້ໃນຖັງຂີ້ເຫຍື້ອ');
 }
 function closeModal(){ $('modalRoot').innerHTML=''; }
 function printReceipt(orderId){
@@ -2010,12 +2533,12 @@ function saveExpense(id){
       // ໃສ່ໃໝ່
       ing.stock+=addBase;
       if(unitCost>0) ing.purchaseCost=unitCost;   // ອັບເດດຕົ້ນທຶນຫຼ້າສຸດ
-      Object.assign(old,{date:dateISO,category:'_inventory',note,qty:containers,unitPrice:unitCost,amount,method,stockLink});
+      stamp(Object.assign(old,{date:dateISO,category:'_inventory',note,qty:containers,unitPrice:unitCost,amount,method,stockLink}));
       toast('ແກ້ໄຂ ແລະ ອັບເດດສາງແລ້ວ');
     }else{
       ing.stock+=addBase;
       if(unitCost>0) ing.purchaseCost=unitCost;
-      state.expenses.push({id:'e'+Date.now(),date:dateISO,category:'_inventory',note,qty:containers,unitPrice:unitCost,amount,method,stockLink});
+      state.expenses.push(stamp({id:'e'+Date.now(),date:dateISO,category:'_inventory',note,qty:containers,unitPrice:unitCost,amount,method,stockLink}));
       toast('ບັນທຶກ ແລະ ເພີ່ມ '+fmt(addBase)+' '+ing.baseUnit+' ເຂົ້າສາງແລ້ວ');
     }
     save(); closeModal(); refresh(); return;
@@ -2032,16 +2555,16 @@ function saveExpense(id){
     const old=state.expenses.find(e=>e.id===id);
     // ຖ້າແກ້ຈາກ stock → op, ຖອນ stock ເກົ່າ
     if(old && old.stockLink){ const oi=findIng(old.stockLink.ingredientId); if(oi){ oi.stock=Math.max(0,oi.stock-(old.stockLink.addBase||0)); } }
-    Object.assign(old,data); toast('ແກ້ໄຂແລ້ວ');
+    stamp(Object.assign(old,data)); toast('ແກ້ໄຂແລ້ວ');
   }
-  else{ state.expenses.push({id:'e'+Date.now(),...data}); toast('ບັນທຶກລາຍຈ່າຍແລ້ວ'); }
+  else{ state.expenses.push(stamp({id:'e'+Date.now(),...data})); toast('ບັນທຶກລາຍຈ່າຍແລ້ວ'); }
   save(); closeModal(); refresh();
 }
 function deleteExpense(id){
   const e=state.expenses.find(x=>x.id===id);
-  // ຖ້າແມ່ນຊື້ເຂົ້າສາງ → ຖອນ stock ທີ່ເພີ່ມໄປອອກ
-  if(e && e.stockLink){ const ing=findIng(e.stockLink.ingredientId); if(ing){ ing.stock=Math.max(0,ing.stock-(e.stockLink.addBase||0)); } }
-  state.expenses=state.expenses.filter(x=>x.id!==id); save(); closeModal(); refresh(); toast('ລຶບລາຍຈ່າຍແລ້ວ');
+  if(e && e.stockLink){ const ing=findIng(e.stockLink.ingredientId); if(ing){ ing.stock=Math.max(0,ing.stock-(e.stockLink.addBase||0)); stamp(ing); } }
+  if(e) trashPut('expense',e);                       // ★ ເຂົ້າຖັງຂີ້ເຫຍື້ອ ບໍ່ລຶບຖິ້ມ
+  state.expenses=state.expenses.filter(x=>x.id!==id); save(); closeModal(); refresh(); toast('ຍ້າຍໄປຖັງຂີ້ເຫຍື້ອແລ້ວ · ກູ້ຄືນໄດ້');
 }
 
 /* Income form (ລາຍຮັບອື່ນ ນອກຈາກການຂາຍ) */
@@ -2087,11 +2610,11 @@ function saveIncome(id){
   if(amount<=0){ toast('ໃສ່ຈຳນວນເງິນ',true); return; }
   const dateISO=$('incDate').value?new Date($('incDate').value+'T12:00:00').toISOString():new Date().toISOString();
   const data={date:dateISO,category:$('incCat').value,note:$('incNote').value.trim(),amount,method:$('incMethod').value};
-  if(id){ Object.assign(state.incomes.find(i=>i.id===id),data); toast('ແກ້ໄຂແລ້ວ'); }
-  else{ state.incomes.push({id:'inc'+Date.now(),...data}); toast('ບັນທຶກລາຍຮັບແລ້ວ'); }
+  if(id){ stamp(Object.assign(state.incomes.find(i=>i.id===id),data)); toast('ແກ້ໄຂແລ້ວ'); }
+  else{ state.incomes.push(stamp({id:'inc'+Date.now(),...data})); toast('ບັນທຶກລາຍຮັບແລ້ວ'); }
   save(); closeModal(); refresh();
 }
-function deleteIncome(id){ state.incomes=state.incomes.filter(i=>i.id!==id); save(); closeModal(); refresh(); toast('ລຶບລາຍຮັບແລ້ວ'); }
+function deleteIncome(id){ const r=state.incomes.find(x=>x.id===id); if(r) trashPut('income',r); state.incomes=state.incomes.filter(i=>i.id!==id); save(); closeModal(); refresh(); toast('ຍ້າຍໄປຖັງຂີ້ເຫຍື້ອແລ້ວ · ກູ້ຄືນໄດ້'); }
 
 /* ============================================================
    PAGE: STATS (ລະອຽດ — ຕາຕະລາງແຕ່ລະເຄື່ອງດື່ມ)
@@ -2277,6 +2800,7 @@ function applyStock(id,mode){
   if(amt<=0){ toast('ກະລຸນາໃສ່ຈຳນວນ',true); return; }
   if(mode==='add'){ ing.stock+=amt; }
   else { const take=Math.min(amt,ing.stock); ing.stock=Math.max(0,ing.stock-amt); ing.used=(ing.used||0)+take; }
+  stamp(ing);
   save(); closeModal(); refresh();
   toast((mode==='add'?'ເຕີມ ':'ຫັກ ')+fmt(amt)+' '+ing.baseUnit+' ສຳເລັດ');
 }
@@ -2368,8 +2892,8 @@ function saveIngredient(id){
     baseUnit:$('ingBUnit').value, purchaseCost:parseFloat($('ingPCost').value)||0,
     stock, used, lowAt:parseFloat($('ingLow').value)||0,
   };
-  if(id){ Object.assign(findIng(id),data); toast('ບັນທຶກແລ້ວ'); }
-  else{ state.ingredients.push({id:'ing'+Date.now(),...data}); toast('ເພີ່ມວັດຖຸດິບແລ້ວ'); }
+  if(id){ stamp(Object.assign(findIng(id),data)); toast('ບັນທຶກແລ້ວ'); }
+  else{ state.ingredients.push(stamp({id:'ing'+Date.now(),...data})); toast('ເພີ່ມວັດຖຸດິບແລ້ວ'); }
   save(); closeModal(); refresh();
 }
 function deleteIngredient(id){
@@ -2379,8 +2903,9 @@ function deleteIngredient(id){
     toast('ວັດຖຸດິບນີ້ຖືກໃຊ້ໃນ '+used.length+' ເມນູ ລຶບບໍ່ໄດ້',true);
     return;
   }
+  const r=findIng(id); if(r) trashPut('ingredient',r);
   state.ingredients=state.ingredients.filter(i=>i.id!==id);
-  save(); closeModal(); refresh(); toast('ລຶບແລ້ວ');
+  save(); closeModal(); refresh(); toast('ຍ້າຍໄປຖັງຂີ້ເຫຍື້ອແລ້ວ · ກູ້ຄືນໄດ້');
 }
 
 /* ============================================================
@@ -2626,6 +3151,7 @@ function renderSyncPanel(){
   </div>`).join('');
   const hasCfg=!!DB.get('fbConfig',null);
   const storeId=DB.get('storeId','')||'';
+  const snapN=snapshotList().length;
 
   let gapHtml='';
   if(H.gaps.length>0){
@@ -2639,6 +3165,28 @@ function renderSyncPanel(){
   }
 
   return `
+    ${(()=>{ const last=DB.get('lastExport',0); const days=last?Math.floor((Date.now()-last)/86400000):999;
+      if(days<7) return '';
+      return `<div class="card" style="border:2px solid var(--warn);background:#FEF6EC">
+        <div style="display:flex;align-items:center;gap:10px"><span style="font-size:24px">📥</span>
+        <div style="flex:1"><div style="font-size:13.5px;font-weight:800;color:#96552F">${last?('ບໍ່ໄດ້ສຳຮອງມາ '+days+' ວັນແລ້ວ'):'ຍັງບໍ່ເຄີຍສຳຮອງຂໍ້ມູນເລີຍ'}</div>
+        <div style="font-size:11.5px;color:#96552F">ກົດດາວໂຫຼດສຳຮອງໄວ້ ປອດໄພກວ່າ</div></div></div>
+        <button class="btn-save" style="margin-top:10px;background:linear-gradient(135deg,#E0A64C,#C1854C)" onclick="exportData()">📥 ດາວໂຫຼດສຳຮອງດຽວນີ້</button>
+      </div>`; })()}
+
+    <div class="card" style="border:2px solid var(--teal);background:#F2FBFA">
+      <div class="card-title"><span class="dot"></span>🛟 ຂໍ້ມູນຫາຍ? ກູ້ຄືນທີ່ນີ້</div>
+      <div class="tiny-note" style="text-align:left;margin-top:0;margin-bottom:10px">ຄົ້ນຫາຂໍ້ມູນຈາກທຸກແຫຼ່ງ (ຈຸດກູ້ຄືນໃນເຄື່ອງ · Cloud ເກົ່າ · Cloud ປັດຈຸບັນ) ແລ້ວ<b>ລວມກັບຂອງປັດຈຸບັນ ບໍ່ລຶບຫຍັງ</b></div>
+      <button class="btn-save" style="margin-top:0" onclick="openRescue()">🛟 ຄົ້ນຫາ & ກູ້ຂໍ້ມູນສຸກເສີນ</button>
+      <button class="btn-save" style="margin-top:8px;background:linear-gradient(135deg,#5BA3D0,#3C7FA8)" onclick="openPasteRestore()">📋 ວາງຂໍ້ມູນຈາກ Firebase Console</button>
+      <button class="btn-save" style="margin-top:8px;background:linear-gradient(135deg,#8A7BC8,#6C5CB0)" onclick="openForensicRebuild()">🔬 ກູ້ບິນທີ່ຫາຍ ຈາກຫຼັກຖານສາງ</button>
+      <div style="display:flex;gap:8px;margin-top:8px">
+        <button class="btn-ghost" style="margin-top:0;flex:1;font-size:12px" onclick="openTrash()">🗑 ຖັງຂີ້ເຫຍື້ອ (${(state.trash||[]).filter(t=>!t.purged).length})</button>
+        <button class="btn-ghost" style="margin-top:0;flex:1;font-size:12px" onclick="openSnapshots()">🕐 ຈຸດກູ້ຄືນ (${snapN})</button>
+      </div>
+      <button class="btn-ghost" style="margin-top:8px;font-size:12px" onclick="openRebuildFromStock()">🧾 ສ້າງລາຍຈ່າຍຈາກສາງ</button>
+    </div>
+
     <div class="card">
       <div style="text-align:center;padding:6px 0 14px">
         <div style="font-size:13px;color:var(--ink-soft);font-weight:600">ຄວາມພ້ອມໃຊ້ງານ</div>
@@ -3067,8 +3615,8 @@ function saveMenu(id){
   const oh=parseFloat($('menuOverhead').value);
   const overridePct = (isNaN(oh)||oh===state.shop.overheadPct)?null:oh;
   const data={name,emoji:$('menuEmoji').value,img:menuDraft.img||null,category:$('menuCat').value,price,recipe,overridePct};
-  if(id){ Object.assign(state.menu.find(m=>m.id===id),data); toast('ບັນທຶກເມນູແລ້ວ'); }
-  else{ state.menu.push({id:'m'+Date.now(),...data}); toast('ເພີ່ມເມນູໃໝ່ແລ້ວ'); }
+  if(id){ stamp(Object.assign(state.menu.find(m=>m.id===id),data)); toast('ບັນທຶກເມນູແລ້ວ'); }
+  else{ state.menu.push(stamp({id:'m'+Date.now(),...data})); toast('ເພີ່ມເມນູໃໝ່ແລ້ວ'); }
   if(!state.savedNames.some(sn=>sn.name===name)) state.savedNames.push({name,emoji:data.emoji});
   save(); menuDraft=null; closeModal(); refresh();
 }
@@ -3082,7 +3630,7 @@ function deleteMenu(id){
   </div></div>`;
   $('modalRoot').innerHTML=html;
 }
-function confirmDeleteMenu(id){ state.menu=state.menu.filter(m=>m.id!==id); save(); closeModal(); refresh(); toast('ລຶບເມນູແລ້ວ'); }
+function confirmDeleteMenu(id){ const r=state.menu.find(x=>x.id===id); if(r) trashPut('menu',r); state.menu=state.menu.filter(m=>m.id!==id); save(); closeModal(); refresh(); toast('ຍ້າຍໄປຖັງຂີ້ເຫຍື້ອແລ້ວ · ກູ້ຄືນໄດ້'); }
 
 window.addEventListener('DOMContentLoaded',()=>{ if(!$('app').classList.contains('hidden'))updateTopbar(); });
 </script>
